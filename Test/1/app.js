@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-const ORS_KEY = '5b3ce3597851110001cf6248c3f9f8d9e1f9466ca5a9d4b2b0cbe86e'; // demo key
+const api_key = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0='; // demo key
 const MAX_PINS = 20;
 
 // --- Leaflet map ---
@@ -73,7 +73,7 @@ async function fetchRoute() {
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Authorization': ORS_KEY, 'Content-Type': 'application/json' },
+      headers: { 'Authorization': api_key, 'Content-Type': 'application/json' },
       body: JSON.stringify({ coordinates: coords })
     });
     if (!res.ok) throw new Error(await res.text());
