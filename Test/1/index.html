@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Interactive Route Planner – Elevation Aware</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <!-- Tailwind (tiny CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #map { height: 70vh; }
+    #elevation { height: 30vh; }
+    .start-pin { background:#22c55e !important; }
+    .way-pin   { background:#3b82f6 !important; }
+  </style>
+</head>
+<body class="bg-gray-900 text-white">
+  <div id="map" class="relative z-0"></div>
+
+  <div id="controls" class="absolute top-2 left-2 z-[1000] space-x-2">
+    <button id="clearBtn" class="px-3 py-1 bg-red-600 rounded">Clear Route</button>
+    <button id="downloadBtn" class="px-3 py-1 bg-blue-600 rounded hidden">Download GPX</button>
+  </div>
+
+  <div id="stats" class="absolute top-2 right-2 z-[1000] bg-black/60 p-2 rounded text-sm">
+    Distance: <span id="dist">0 km</span> | Gain: <span id="gain">0 m</span> | Loss: <span id="loss">0 m</span>
+  </div>
+
+  <canvas id="elevation" class="w-full bg-gray-800"></canvas>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
