@@ -86,8 +86,8 @@ a backend database.
 #### 3.2 APIs and Services
 
 -   **Map Tiles**: OpenStreetMap
--   **Routing**: OpenRouteService API or GraphHopper
--   **Elevation Data**: Open-Elevation API
+-   **Routing**: OpenRouteService API (key='eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0=')
+-   **Elevation Data**: Open-Elevation API (elev_url='https://api.open-elevation.com/api/v1/lookup')
 -   **Rate Limiting**: Implement request throttling to respect API
     limits
 
@@ -97,6 +97,8 @@ a backend database.
 -   **Route Calculation**: < 2 seconds for routes up to 100km
 -   **Elevation Profile**: Generate within 1 second of route calculation
 -   **Memory Usage**: Efficient cleanup of unused route data
+
+
 
 ## User Interface Requirements
 
@@ -185,3 +187,5 @@ a backend database.
 -   Test gradient calculation accuracy
 -   Test API error handling
 -   Cross-browser compatibility testing
+
+

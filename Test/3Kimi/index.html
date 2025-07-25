@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Route Planner – 100 % Browser</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto}
+    #map{height:80vh}
+    #profile{height:20vh;position:relative}
+    .leaflet-popup-content{min-width:120px}
+    .btn{background:#2563eb;color:#fff;border:none;padding:.5rem 1rem;margin:.25rem;border-radius:4px;cursor:pointer}
+    #stats{background:#f3f4f6;padding:.5rem;font-size:.875rem;display:flex;gap:1rem}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="stats">
+    <span id="dist">Distance: –</span>
+    <span id="gain">↑ Gain: –</span>
+    <span id="loss">↓ Loss: –</span>
+    <button class="btn" onclick="clearRoute()">Clear</button>
+    <button class="btn" onclick="downloadGPX()">Export GPX</button>
+  </div>
+  <canvas id="profile"></canvas>
+
+  <script>
+    /* ========= CONFIG ========= */
+    const ORS_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0=';
+    const MAX_PINS = 20;
+
+    /* ========= GLOBAL STATE ========= */
+    let map, routeLine, pinGroup = [], elevChart;
+    const waypoints = []; // {lat, lng, marker}
+
+    /* ========= INIT MAP ========= */
+    map = L.map('map').fitWorld();
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Geolocate once
+    map.locate({setView: true, maxZoom: 13});
+    map.on('locationfound', e => {
+      L.marker(e.latlng).addTo(map).bindPopup('Your location').openPopup();
+    });
+    map.on('locationerror', () => map.setView([40.4168, -3.7038], 13)); // Madrid fallback
+
+    /* ========= PIN HANDLING ========= */
+    map.on('click', e => {
+      if (waypoints.length >= MAX_PINS) return alert(`Max ${MAX_PINS} waypoints.`);
+      const idx = waypoints.length + 1;
+      const marker = L.marker(e.latlng, {
+        icon: L.divIcon({
+          html: `<div style="background:${idx === 1 ? '#22c55e' : '#3b82f6'};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:bold">${idx}</div>`,
+          className: '',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        }),
+        draggable: true
+      }).addTo(map);
+      marker.bindPopup(`<button onclick="removePin(${waypoints.length})">Remove</button>`);
+      marker.on('dragend', rebuild);
+      waypoints.push({lat: e.latlng.lat, lng: e.latlng.lng, marker});
+      rebuild();
+    });
+
+    function removePin(i) {
+      map.removeLayer(waypoints[i].marker);
+      waypoints.splice(i, 1);
+      waypoints.forEach((w, idx) => {
+        w.marker.setIcon(L.divIcon({
+          html: `<div style="background:${idx === 0 ? '#22c55e' : '#3b82f6'};color:#fff;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:bold">${idx + 1}</div>`,
+          className: '', iconSize: [24, 24], iconAnchor: [12, 12]
+        }));
+      });
+      rebuild();
+    }
+
+    /* ========= ROUTE + ELEVATION ========= */
+    async function rebuild() {
+      if (waypoints.length < 2) {
+        if (routeLine) map.removeLayer(routeLine);
+        if (elevChart) elevChart.destroy();
+        updateStats(0, 0, 0);
+        return;
+      }
+
+      const coords = waypoints.map(w => [w.lng, w.lat]);
+      const url = `https://api.openrouteservice.org/v2/directions/driving-car/geojson`;
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': ORS_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            coordinates: coords,
+            geometry: true,
+            geometry_simplify: false
+          })
+        });
+        if (!res.ok) throw new Error(res.statusText);
+        const geojson = await res.json();
+        const route = geojson.features[0].geometry.coordinates.map(c => [c[1], c[0]]);
+        if (routeLine) map.removeLayer(routeLine);
+        routeLine = L.polyline(route, {color: '#3b82f6', weight: 6}).addTo(map);
+        map.fitBounds(routeLine.getBounds());
+
+        const flat = route.flat();
+        const elevs = await fetchElevations(flat);
+        drawProfile(elevs);
+        updateStats(elevs);
+      } catch (err) {
+        alert('Routing error: ' + err.message);
+      }
+    }
+
+    /* ========= ELEVATION API ========= */
+    async function fetchElevations(path) {
+      const chunk = 500; // open-elevation limit
+      let elevs = [];
+      for (let i = 0; i < path.length; i += chunk) {
+        const slice = path.slice(i, i + chunk);
+        const body = {
+          locations: slice.map(p => ({latitude: p[0], longitude: p[1]}))
+        };
+        const res = await fetch('https://api.open-elevation.com/api/v1/lookup', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+        elevs = elevs.concat(json.results.map(r => r.elevation));
+      }
+      return {path, elevs};
+    }
+
+    /* ========= DRAW ELEVATION CHART ========= */
+    function drawProfile({path, elevs}) {
+      const dists = [];
+      let acc = 0;
+      for (let i = 0; i < path.length; i++) {
+        if (i > 0) {
+          acc += L.latLng(path[i]).distanceTo(path[i - 1]);
+        }
+        dists.push(acc / 1000); // km
+      }
+
+      const gradients = elevs.map((e, i) => {
+        if (i === 0) return 0;
+        const dx = dists[i] - dists[i - 1];
+        const dy = e - elevs[i - 1];
+        return Math.atan2(dy, dx * 1000) * 180 / Math.PI; // degrees
+      });
+
+      const colors = gradients.map(g => (Math.abs(g) > 5) ? 'rgba(239,68,68,0.8)' : 'rgba(59,130,246,0.8)');
+
+      if (elevChart) elevChart.destroy();
+      const ctx = document.getElementById('profile').getContext('2d');
+      elevChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dists,
+          datasets: [{
+            label: 'Elevation (m)',
+            data: elevs,
+            borderWidth: 1,
+            segment: {
+              borderColor: ctx => colors[ctx.p0DataIndex]
+            },
+            fill: false,
+            tension: 0.2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          plugins: {legend: {display: false}},
+          onHover: (e, items) => {
+            if (!items.length) return;
+            const idx = items[0].index;
+            const latlng = L.latLng(path[idx]);
+            if (!window.hlMarker) window.hlMarker = L.circleMarker([0, 0], {radius: 6, color: '#f59e0b'}).addTo(map);
+            window.hlMarker.setLatLng(latlng);
+          },
+          scales: {
+            x: {title: {display: true, text: 'Distance (km)'}},
+            y: {title: {display: true, text: 'Elevation (m)'}}
+          }
+        }
+      });
+    }
+
+    /* ========= STATS ========= */
+    function updateStats({elevs} = {}, dist = 0) {
+      if (!elevs) {
+        document.getElementById('dist').textContent = 'Distance: –';
+        document.getElementById('gain').textContent = '↑ Gain: –';
+        document.getElementById('loss').textContent = '↓ Loss: –';
+        return;
+      }
+      let gain = 0, loss = 0;
+      for (let i = 1; i < elevs.length; i++) {
+        const d = elevs[i] - elevs[i - 1];
+        if (d > 0) gain += d; else loss -= d;
+      }
+      document.getElementById('dist').textContent = `Distance: ${(dist || 0).toFixed(1)} km`;
+      document.getElementById('gain').textContent = `↑ Gain: ${Math.round(gain)} m`;
+      document.getElementById('loss').textContent = `↓ Loss: ${Math.round(loss)} m`;
+    }
+
+    /* ========= UTILS ========= */
+    function clearRoute() {
+      waypoints.forEach(w => map.removeLayer(w.marker));
+      waypoints.length = 0;
+      if (routeLine) map.removeLayer(routeLine);
+      if (elevChart) elevChart.destroy();
+      updateStats();
+      if (window.hlMarker) map.removeLayer(window.hlMarker);
+    }
+
+    function downloadGPX() {
+      if (waypoints.length < 2) return alert('No route to export');
+      const coords = waypoints.map(w => `${w.lat},${w.lng}`).join('|');
+      const url = `https://api.openrouteservice.org/v2/directions/driving-car/gpx?api_key=${ORS_KEY}&coordinates=${waypoints.map(w => [w.lng, w.lat]).join('|')}`;
+      window.open(url);
+    }
+  </script>
+</body>
+</html>
