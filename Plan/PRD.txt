@@ -58,6 +58,9 @@ a backend database.
     APIs
 -   **X-axis**: Distance along route(on meters or kilometers if the distance is >1000m)
 -   **Y-axis**: Elevation in meters
+-   **Output**: 
+      - On the left, show me the total length of the route (in meters if it’s < 1 000 m, otherwise in kilometers)
+      - on the right display the elevation profile of the route. Wherever the uphill gradient is > 5°, mark it in red on the chart.
 
 #### 2.2 Gradient Visualization
 
@@ -104,8 +107,8 @@ a backend database.
 
 ### 4.1 Layout
 
--   **Top Section**: Interactive map (80% of viewport height)
--   **Bottom Section**: Elevation profile (20% of viewport height)
+-   **Top Section**: Interactive map (70% of viewport height)
+-   **Bottom Section**: Elevation profile (30% of viewport height)
 -   **Responsive**: Adapt to different screen sizes
 -   **Mobile Friendly**: Touch-optimized for tablets/phones
 

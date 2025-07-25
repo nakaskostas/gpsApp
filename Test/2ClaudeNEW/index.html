@@ -560,37 +560,40 @@
         }
         
         // Process elevation data
+
         function processElevationData(elevationResults, coordinates) {
-            let cumulativeDistance = 0;
-            const elevationData = [];
-            
-            elevationResults.forEach((point, index) => {
-                if (index > 0) {
-                    const prevCoord = coordinates[index - 1];
-                    const currCoord = coordinates[index];
-                    const distance = calculateDistance(
-                        prevCoord[0], prevCoord[1],
-                        currCoord[0], currCoord[1]
-                    );
-                    cumulativeDistance += distance;
-                }
-                
-                const gradient = index > 0 ? 
-                    Math.abs(Math.atan((point.elevation - elevationResults[index - 1].elevation) / 
-                    Math.max(100, cumulativeDistance - (elevationData[index - 1]?.distance || 0))) * 180 / Math.PI) : 0;
-                
-                elevationData.push({
-                    distance: cumulativeDistance,
-                    elevation: point.elevation,
-                    gradient: gradient,
-                    isSteep: gradient > 5
-                });
-            });
-            
-            console.log('Processed elevation data points:', elevationData.length);
-            updateRouteStats(elevationData);
-            displayElevationChart(elevationData);
+    let cumulativeDistance = 0;
+    const elevationData = [];
+
+    elevationResults.forEach((point, index) => {
+        if (index > 0) {
+            const prevCoord = coordinates[index - 1];
+            const currCoord = coordinates[index];
+            const distance = calculateDistance(
+                prevCoord[0], prevCoord[1],
+                currCoord[0], currCoord[1]
+            );
+            cumulativeDistance += distance;
         }
+
+        const gradient = index > 0
+            ? Math.abs(Math.atan((point.elevation - elevationResults[index - 1].elevation) /
+                Math.max(100, cumulativeDistance - (elevationData[index - 1]?.distance || 0))) * 180 / Math.PI)
+            : 0;
+
+        elevationData.push({
+            distance: cumulativeDistance,
+            elevation: point.elevation,
+            gradient,
+            isSteep: gradient > 5
+        });
+    });
+
+    //  εμφάνιση των στατιστικών και του elevation profile
+    const totalDistanceM = currentRoute.summary.distance;
+    updateRouteStats(elevationData, totalDistanceM);
+    displayElevationChart(elevationData);
+}
         
         // Calculate distance between two coordinates
         function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -609,30 +612,29 @@
         }
         
         // Update route statistics
-        function updateRouteStats(elevationData) {
-            if (!currentRoute || !elevationData.length) return;
-            
-            const totalDistance = (currentRoute.summary.distance / 1000).toFixed(1);
-            const elevations = elevationData.map(p => p.elevation);
-            
-            let elevationGain = 0;
-            let elevationLoss = 0;
-            
-            for (let i = 1; i < elevations.length; i++) {
-                const diff = elevations[i] - elevations[i - 1];
-                if (diff > 0) {
-                    elevationGain += diff;
-                } else {
-                    elevationLoss += Math.abs(diff);
-                }
-            }
-            
-            document.getElementById('totalDistance').textContent = `${totalDistance} km`;
-            document.getElementById('elevationGain').textContent = `+${elevationGain.toFixed(0)}m`;
-            document.getElementById('elevationLoss').textContent = `-${elevationLoss.toFixed(0)}m`;
-            
-            document.getElementById('elevationSection').style.display = 'block';
-        }
+        function updateRouteStats(elevationData, totalDistanceM) {
+    if (!elevationData.length) return;
+
+    const totalDistance = totalDistanceM > 1000
+        ? (totalDistanceM / 1000).toFixed(1)
+        : totalDistanceM.toFixed(0);
+    const unit = totalDistanceM > 1000 ? 'km' : 'm';
+
+    const elevations = elevationData.map(p => p.elevation);
+    let elevationGain = 0, elevationLoss = 0;
+
+    for (let i = 1; i < elevations.length; i++) {
+        const diff = elevations[i] - elevations[i - 1];
+        if (diff > 0) elevationGain += diff;
+        else elevationLoss += Math.abs(diff);
+    }
+
+    document.getElementById('totalDistance').textContent = `${totalDistance} ${unit}`;
+    document.getElementById('elevationGain').textContent = `+${elevationGain.toFixed(0)} m`;
+    document.getElementById('elevationLoss').textContent = `-${elevationLoss.toFixed(0)} m`;
+
+    document.getElementById('elevationSection').style.display = 'block';
+}
         
         // Display elevation chart
         function displayElevationChart(elevationData) {
