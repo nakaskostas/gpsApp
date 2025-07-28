@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Planner</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    
+    <style>
+        .leaflet-container {
+            height: 100%;
+            width: 100%;
+            cursor: crosshair;
+        }
+        
+        .pin-icon {
+            background: #3B82F6;
+            border: 3px solid white;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+        }
+        
+        .pin-icon.start {
+            background: #10B981;
+        }
+        
+        .pin-icon.selected {
+            border-color: #FFC107;
+            border-width: 4px;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3B82F6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-fade {
+            animation: fadeOut 5s forwards;
+        }
+        
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; display: none; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+    
+    <!-- Header Controls -->
+    <div class="bg-white shadow-sm p-4 flex justify-between items-center relative z-50">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Route Planner
+        </h1>
+        <div class="flex gap-2">
+            <button id="clearRoute" class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+                Clear Route
+            </button>
+            <button id="downloadGPX" class="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors" style="display: none;">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Download GPX
+            </button>
+        </div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 mx-4 mt-2 rounded relative z-40" style="display: none;">
+        <span id="errorText"></span>
+    </div>
+
+    <!-- Loading Message -->
+    <div id="loadingMessage" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50 flex items-center gap-2" style="display: none;">
+        <div class="loading-spinner"></div>
+        <span>Calculating route...</span>
+    </div>
+
+    <!-- Map Container -->
+    <div class="relative" style="height: calc(100vh - 280px);">
+        <div id="map" class="h-full w-full"></div>
+        
+        <!-- Instructions Overlay -->
+        <div id="instructions" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-lg z-30">
+            <p class="text-blue-700 text-sm">
+                Click on the map to place pins and create your route. Right-click to remove pins.
+            </p>
+        </div>
+    </div>
+
+    <!-- Route Stats and Elevation Profile -->
+    <div id="elevationSection" class="bg-white border-t" style="height: 200px;">
+        <!-- Route Stats -->
+        <div id="routeStats" class="p-4 border-b">
+            <h3 class="text-lg font-semibold mb-3">Route Statistics</h3>
+            <div class="grid grid-cols-3 gap-4 text-sm">
+                <div class="text-center">
+                    <div class="text-gray-600 text-xs uppercase tracking-wide">Distance</div>
+                    <div id="totalDistance" class="font-bold text-lg text-blue-600">Click on map to start</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-gray-600 text-xs uppercase tracking-wide">Elevation Gain</div>
+                    <div id="elevationGain" class="font-bold text-lg text-green-600">-</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-gray-600 text-xs uppercase tracking-wide">Elevation Loss</div>
+                    <div id="elevationLoss" class="font-bold text-lg text-red-600">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Elevation Chart -->
+        <div class="p-4" style="height: 120px;">
+            <div id="elevationChartContainer" style="height: 100%; position: relative;">
+                <canvas id="elevationChart"></canvas>
+                <div id="noElevationMessage" class="flex items-center justify-center h-full text-gray-500 text-sm">
+                    Create a route to see elevation profile
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    
+    
+    <script src="config.js"></script>
+    <script src="/js/app.js" type="module"></script>
+</body>
+</html>
