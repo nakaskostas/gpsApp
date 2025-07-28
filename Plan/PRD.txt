@@ -21,7 +21,7 @@ a backend database.
 
 #### 1.1 Map Display
 
--   **Map Provider**: OpenStreetMap tiles via open source services
+-   **Map Provider**: OpenStreetMap tiles via open source services [Context7 Link](https://context7.com/igor-suhorukov/openstreetmap_h3/llms.txt)
 -   **Initial View**: Centered on user's location (or default location
     if geolocation unavailable)
 -   **Zoom Controls**: Standard zoom in/out functionality
@@ -42,7 +42,7 @@ a backend database.
 #### 1.3 Route Optimization
 
 -   **Routing Engine**: Use OpenRouteService API or similar open source
-    routing
+    routing [Context7 Link](https://context7.com/giscience/openrouteservice/llms.txt)
 -   **Route Type**: Road network only (no off-road routing)
 -   **Route Display**: Clear line visualization between pins
 -   **Real-time Updates**: Route recalculates automatically when pins
@@ -82,7 +82,7 @@ a backend database.
 #### 3.1 Architecture
 
 -   **Type**: Single Page Application (SPA)
--   **Framework**: node.js or React
+-   **Framework**: --------------------------------------
 -   **No Backend**: All processing client-side
 -   **No Database**: No persistent data storage
 
@@ -107,8 +107,8 @@ a backend database.
 
 ### 4.1 Layout
 
--   **Top Section**: Interactive map (70% of viewport height)
--   **Bottom Section**: Elevation profile (30% of viewport height)
+-   **Top Section**: Interactive map (80% of viewport height)
+-   **Bottom Section**: Elevation profile (20% of viewport height)
 -   **Responsive**: Adapt to different screen sizes
 -   **Mobile Friendly**: Touch-optimized for tablets/phones
 
@@ -138,8 +138,8 @@ a backend database.
 
 ### 5.2 API Dependencies
 
--   **Primary Routing**: OpenRouteService (free tier: 2000 requests/day)
--   **Fallback Routing**: GraphHopper or MapBox (if needed)
+-   **Primary Routing**: OpenRouteService (free tier: 2000 requests/day) 
+-   **Fallback Routing**: GraphHopper, GraphHopper API key (bf786448-12b8-4aea-8549-b3cc120e9f8c) [Context7 Link](https://context7.com/graphhopper/graphhopper/llms.txt)
 -   **Elevation**: Open-Elevation API (unlimited, open source)
 -   **Error Handling**: Pop up window if any API errors occur
 
