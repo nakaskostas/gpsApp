@@ -18,7 +18,7 @@
         .leaflet-container {
             height: 100%;
             width: 100%;
-            cursor: crosshair;  
+            cursor: crosshair;
         }
         
         .pin-icon {
@@ -653,13 +653,20 @@
                     cumulativeDistance += segmentDistance;
                 }
                 
-                // Calculate gradient
+                // Calculate gradient - FIXED: Only positive (uphill) gradients are marked as steep
                 let gradient = 0;
+                let isSteep = false;
+                
                 if (index > 0) {
                     const elevationDiff = point.elevation - elevationResults[index - 1].elevation;
                     const distanceDiff = cumulativeDistance - (elevationData[index - 1]?.distance || 0);
                     if (distanceDiff > 0) {
-                        gradient = Math.abs(Math.atan(elevationDiff / distanceDiff) * 180 / Math.PI);
+                        // Calculate actual gradient percentage (rise/run * 100)
+                        const gradientPercent = (elevationDiff / distanceDiff) * 100;
+                        // Convert to angle in degrees
+                        gradient = Math.atan(gradientPercent / 100) * 180 / Math.PI;
+                        // Mark as steep ONLY if it's uphill (positive elevation difference) and angle > threshold
+                        isSteep = elevationDiff > 0 && gradient > CONFIG.STEEP_GRADIENT_THRESHOLD;
                     }
                 }
                 
@@ -667,7 +674,7 @@
                     distance: cumulativeDistance,
                     elevation: point.elevation,
                     gradient: gradient,
-                    isSteep: gradient > CONFIG.STEEP_GRADIENT_THRESHOLD
+                    isSteep: isSteep
                 });
             });
             
@@ -728,7 +735,7 @@
                     }
                 }
                 
-                // Determine color based on steepness
+                // Determine color based on steepness (red only for uphill steep sections)
                 const color = isSteep ? '#EF4444' : '#3B82F6';
                 
                 if (currentSegment.length === 0) {
@@ -897,8 +904,10 @@
                                 },
                                 label: function(context) {
                                     const point = elevationData[context.dataIndex];
-                                    const gradient = point.gradient ? ` (${point.gradient.toFixed(1)}° gradient)` : '';
-                                    return `Elevation: ${Math.round(point.elevation)}m${gradient}`;
+                                    const gradientText = point.gradient !== undefined 
+                                        ? ` (${point.gradient > 0 ? '+' : ''}${point.gradient.toFixed(1)}° gradient)` 
+                                        : '';
+                                    return `Elevation: ${Math.round(point.elevation)}m${gradientText}`;
                                 }
                             }
                         },
