@@ -1,0 +1,273 @@
+# Route Planner Web App - Enhanced Project Requirements Document
+
+## Project Overview
+
+### Purpose
+
+Create a live web application for interactive route planning with advanced elevation profiling and gradient analysis that runs entirely in the browser without requiring a backend database. The application should provide detailed insights into uphill sections and interactive visualization similar to Komoot's functionality.
+
+### Target Users
+
+-   Outdoor enthusiasts
+-   Cyclists and hikers
+-   Route planners
+-   Athletes training on specific gradients
+-   Anyone needing elevation-aware route planning with gradient analysis
+
+## Functional Requirements
+
+### 1. Interactive Map Interface
+
+#### 1.1 Map Display
+
+-   **Map Provider**: OpenStreetMap tiles via open source services
+-   **Initial View**: Centered on user's location (or default location if geolocation unavailable)
+-   **Zoom Controls**: Standard zoom in/out functionality
+-   **Pan Support**: Click and drag map navigation
+
+#### 1.2 Pin Placement System
+
+-   **Pin Creation**: Single click on map to place pins
+-   **First Pin**: Automatically designated as starting point (different visual style)
+-   **Pin Sequence**: Subsequent pins create waypoints in chronological order
+-   **Pin Management**:
+    -   Right-click to remove pins
+    -   Drag pins to reposition
+    -   Maximum 20 pins to prevent performance issues
+
+#### 1.3 Route Optimization
+
+-   **Routing Engine**: Use OpenRouteService API or similar open source routing
+-   **Route Type**: Road network only (no off-road routing)
+-   **Route Display**: 
+    -   **Normal sections**: Blue color (#3B82F6)
+    -   **Steep uphill sections (>5° gradient)**: Red color (#EF4444)
+    -   **Smooth color transitions**: Gradual transitions between different gradient zones
+-   **Real-time Updates**: Route recalculates automatically when pins are moved/added/removed
+
+### 2. Enhanced Elevation Profile Display
+
+#### 2.1 Profile Visualization
+
+-   **Position**: Below the map interface, right side of bottom section
+-   **Style**: Similar to Komoot's elevation profile with enhanced interactivity
+-   **Size**: Large and clearly visible for easy reading of elevation differences
+-   **Height**: Sufficiently tall to show elevation variations clearly
+-   **Data Source**: Elevation data from OpenStreetMap or open elevation APIs
+-   **X-axis**: Distance along route (in meters if <1000m, otherwise in kilometers)
+-   **Y-axis**: Elevation in meters
+
+#### 2.2 Gradient Visualization and Analysis
+
+-   **Color Coding**:
+    -   Normal sections: Blue/green color
+    -   Steep sections (>5° gradient): Red color
+-   **Gradient Calculation**: Calculate slope between elevation points
+-   **Steep Section Tracking**: Calculate total length of all route segments with uphill gradient >5°
+-   **Smooth Transitions**: Gradual color transitions between different gradient zones
+
+#### 2.3 Advanced Interactive Features
+
+-   **Hover Effects**: 
+    -   Show exact elevation, distance from start, and current gradient on hover
+    -   **Distance format**: Display in meters if <1km, kilometers if >1km
+    -   **Information popup**: Display distance from start, current elevation (in meters), and gradient
+-   **Map Synchronization**: When hovering over elevation profile, highlight corresponding location on map route
+-   **Live Highlighting**: The highlighted section on the map should be clearly visible and easily distinguishable
+-   **Real-time Updates**: All interactions update in real-time without delays
+
+### 3. Enhanced Route Statistics Display
+
+#### 3.1 Statistics Panel Layout
+
+-   **Position**: Bottom left area, below the map
+-   **Display Items**:
+    1. **Total Route Distance**: Complete length of entire route
+    2. **Steep Uphill Distance**: Total length of all route segments with uphill gradient >5°
+    3. **Elevation Gain**: Total positive elevation change
+    4. **Elevation Loss**: Total negative elevation change
+
+#### 3.2 Statistics Formatting
+
+-   **Distance Units**: 
+    -   Meters for distances <1000m
+    -   Kilometers (with decimal) for distances ≥1000m
+-   **Elevation Units**: Always in meters
+-   **Real-time Updates**: Statistics update immediately when route changes
+-   **Clear Labeling**: Each statistic clearly labeled and easy to read
+
+### 4. Technical Requirements
+
+#### 4.1 Architecture
+
+-   **Type**: Single Page Application (SPA)
+-   **Framework**: Modern JavaScript with mapping libraries
+-   **No Backend**: All processing client-side
+-   **No Database**: No persistent data storage
+
+#### 4.2 APIs and Services
+
+-   **Map Tiles**: OpenStreetMap
+-   **Routing**: OpenRouteService API (key='eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0=')
+-   **Elevation Data**: Open-Elevation API (elev_url='https://api.open-elevation.com/api/v1/lookup')
+-   **Fallback Routing**: GraphHopper API (key='bf786448-12b8-4aea-8549-b3cc120e9f8c')
+-   **Rate Limiting**: Implement request throttling to respect API limits
+
+#### 4.3 Performance Requirements
+
+-   **Load Time**: Initial page load < 3 seconds
+-   **Route Calculation**: < 2 seconds for routes up to 100km
+-   **Elevation Profile**: Generate within 1 second of route calculation
+-   **Interactive Response**: Hover effects and highlighting < 100ms response time
+-   **Memory Usage**: Efficient cleanup of unused route data
+-   **Gradient Calculation**: Real-time calculation of steep sections
+
+## User Interface Requirements
+
+### 5.1 Enhanced Layout
+
+-   **Top Section**: Interactive map (70% of viewport height)
+-   **Bottom Section**: Split into two areas (30% of viewport height)
+    -   **Left Area**: Route statistics panel (30% of bottom section width)
+    -   **Right Area**: Large elevation profile graph (70% of bottom section width)
+-   **Responsive**: Adapt to different screen sizes
+-   **Mobile Friendly**: Touch-optimized for tablets/phones
+
+### 5.2 Controls
+
+-   **Clear Route Button**: Remove all pins and reset
+-   **Download Route**: Export GPX file 
+-   **Pin Management**: Visual feedback for pin selection and manipulation
+
+### 5.3 Enhanced Visual Design
+
+-   **Color Scheme**: Modern, high-contrast colors
+-   **Pin Styling**:
+    -   Start pin: Green with number "1"
+    -   Waypoint pins: Blue with sequential numbers
+    -   Selected pin: Highlighted border
+-   **Route Line**: 
+    -   **Normal sections**: Bold blue (#3B82F6)
+    -   **Steep sections**: Bold red (#EF4444) for gradients >5°
+    -   **Highlighted sections**: Enhanced visibility during hover interactions
+-   **Statistics Panel**: Clean, organized display with clear typography
+-   **Elevation Graph**: 
+    -   High contrast colors
+    -   Clear grid lines
+    -   Smooth gradient transitions
+    -   Interactive hover states
+
+### 5.4 Interactive Elements
+
+-   **Hover States**: All interactive elements provide visual feedback
+-   **Map-Graph Synchronization**: Seamless interaction between map and elevation profile
+-   **Real-time Statistics**: All statistics update immediately upon route changes
+-   **Error Handling**: Clear error messages with user-friendly language
+
+## Technical Constraints
+
+### 6.1 Browser Support
+
+-   **Modern Browsers**: Chrome 80+, Firefox 75+, Safari 13+, Edge 80+
+-   **JavaScript**: ES6+ features acceptable
+-   **Mobile Browsers**: iOS Safari, Chrome Mobile
+
+### 6.2 API Dependencies
+
+-   **Primary Routing**: OpenRouteService (free tier: 2000 requests/day) 
+-   **Fallback Routing**: GraphHopper
+-   **Elevation**: Open-Elevation API (unlimited, open source)
+-   **Error Handling**: Graceful fallbacks and user notifications
+
+### 6.3 Data Storage
+
+-   **Session Only**: Route data stored in browser memory only
+-   **No Persistence**: Data lost on page refresh (by design)
+-   **Local Storage**: Only for user preferences (map center, zoom level)
+
+## Enhanced Success Criteria
+
+### 7.1 Core Functionality
+
+-   [ ] User can place pins on map with single click
+-   [ ] Route automatically calculates between pins using road network only
+-   [ ] Route displays in blue for normal sections, red for steep sections (>5°)
+-   [ ] Elevation profile displays with interactive hover functionality
+-   [ ] Statistics panel shows all required metrics
+-   [ ] Application runs smoothly without backend dependencies
+
+### 7.2 Advanced Features
+
+-   [ ] Steep uphill section calculation (>5° gradient) accurate within 5%
+-   [ ] Map-elevation graph synchronization works smoothly
+-   [ ] Hover interactions provide detailed information
+-   [ ] Route highlighting clearly visible during interactions
+-   [ ] Statistics update in real-time during route modifications
+
+### 7.3 Performance
+
+-   [ ] Route calculation completes within 2 seconds
+-   [ ] Elevation profile renders within 1 second
+-   [ ] Hover interactions respond within 100ms
+-   [ ] No memory leaks during extended use
+-   [ ] Responsive on mobile devices
+
+### 7.4 User Experience
+
+-   [ ] Intuitive pin placement and management
+-   [ ] Clear visual feedback for all interactions
+-   [ ] Smooth transitions and animations
+-   [ ] Error messages when APIs fail
+-   [ ] Statistics easily readable and understandable
+-   [ ] Elevation graph provides clear elevation difference visualization
+
+## Development Notes
+
+### Technology Stack Recommendations
+
+-   **Frontend**: React with Leaflet.js for mapping
+-   **Styling**: Tailwind CSS or styled-components
+-   **Charts**: Chart.js or D3.js for elevation profile with interactive capabilities
+-   **Mathematical Libraries**: For gradient calculations and distance computations
+
+### Implementation Priorities
+
+1. **Phase 1**: Basic mapping and pin placement
+2. **Phase 2**: Route calculation and basic elevation profile
+3. **Phase 3**: Gradient analysis and colored route display
+4. **Phase 4**: Interactive features and statistics panel
+5. **Phase 5**: Polish and performance optimization
+
+### Testing Requirements
+
+-   Test with various route lengths (1km to 100km+)
+-   Test gradient calculation accuracy against known routes
+-   Test interactive features across different devices
+-   Test API error handling and fallback mechanisms
+-   Cross-browser compatibility testing
+-   Performance testing with complex routes
+
+### Key Calculations Required
+
+-   **Distance Calculation**: Haversine formula for accurate distances
+-   **Gradient Calculation**: Elevation difference divided by horizontal distance
+-   **Steep Section Tracking**: Accumulate distances where gradient >5°
+-   **Elevation Statistics**: Sum positive and negative elevation changes
+-   **Interactive Mapping**: Convert elevation profile positions to map coordinates
+
+## API Integration Details
+
+### Routing APIs
+-   **Primary**: OpenRouteService with comprehensive error handling
+-   **Secondary**: GraphHopper as fallback
+-   **Tertiary**: OSRM as final fallback
+
+### Elevation APIs
+-   **Primary**: Open-Elevation API
+-   **Fallback**: Generate mock elevation data for demonstration
+
+### Error Handling Strategy
+-   Graceful degradation when APIs are unavailable
+-   User-friendly error messages
+-   Automatic retry mechanisms with exponential backoff
+-   Fallback to alternative data sources when possible

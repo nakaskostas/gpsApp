@@ -1,18 +1,183 @@
-// Configuration
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Route Planner</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    
+    <style>
+        .leaflet-container {
+            height: 100%;
+            width: 100%;
+            cursor: crosshair;
+        }
+        
+        .pin-icon {
+            background: #3B82F6;
+            border: 3px solid white;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+        }
+        
+        .pin-icon.start {
+            background: #10B981;
+        }
+        
+        .pin-icon.selected {
+            border-color: #FFC107;
+            border-width: 4px;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3B82F6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-fade {
+            animation: fadeOut 5s forwards;
+        }
+        
+        @keyframes fadeOut {
+            0% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; display: none; }
+        }
+        
+        .gradient-highlight {
+            background: rgba(255, 255, 0, 0.3);
+            border: 2px solid #FFC107;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+    
+    <!-- Header Controls -->
+    <div class="bg-white shadow-sm p-4 flex justify-between items-center relative z-50">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Enhanced Route Planner
+        </h1>
+        <div class="flex gap-2">
+            <button id="clearRoute" class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+                Clear Route
+            </button>
+            <button id="downloadGPX" class="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors" style="display: none;">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Download GPX
+            </button>
+        </div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 mx-4 mt-2 rounded relative z-40" style="display: none;">
+        <span id="errorText"></span>
+    </div>
+
+    <!-- Loading Message -->
+    <div id="loadingMessage" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-50 flex items-center gap-2" style="display: none;">
+        <div class="loading-spinner"></div>
+        <span>Calculating route...</span>
+    </div>
+
+    <!-- Map Container -->
+    <div class="relative" style="height: 70vh;">
+        <div id="map" class="h-full w-full"></div>
+        
+        <!-- Instructions Overlay -->
+        <div id="instructions" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-50 border border-blue-200 px-4 py-2 rounded shadow-lg z-30">
+            <p class="text-blue-700 text-sm">
+                Click on the map to place pins and create your route. Right-click to remove pins.
+            </p>
+        </div>
+    </div>
+
+    <!-- Bottom Section -->
+    <div class="bg-white border-t" style="height: 30vh;">
+        <div class="flex h-full">
+            <!-- Route Statistics (Left) -->
+            <div class="w-1/3 border-r p-4">
+                <h3 class="text-lg font-semibold mb-3">Route Statistics</h3>
+                <div class="space-y-3 text-sm">
+                    <div>
+                        <div class="text-gray-600 text-xs uppercase tracking-wide">Total Distance</div>
+                        <div id="totalDistance" class="font-bold text-lg text-blue-600">Click on map to start</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-600 text-xs uppercase tracking-wide">Steep Uphill Distance</div>
+                        <div id="steepUphillDistance" class="font-bold text-lg text-red-600">-</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-600 text-xs uppercase tracking-wide">Elevation Gain</div>
+                        <div id="elevationGain" class="font-bold text-lg text-green-600">-</div>
+                    </div>
+                    <div>
+                        <div class="text-gray-600 text-xs uppercase tracking-wide">Elevation Loss</div>
+                        <div id="elevationLoss" class="font-bold text-lg text-red-600">-</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Elevation Profile (Right) -->
+            <div class="w-2/3 p-4">
+                <h3 class="text-lg font-semibold mb-3">Elevation Profile</h3>
+                <div class="relative h-full">
+                    <canvas id="elevationChart"></canvas>
+                    <div id="noElevationMessage" class="flex items-center justify-center h-full text-gray-500 text-sm">
+                        Create a route to see elevation profile
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    
+    <script>
+        // Configuration
         const CONFIG = {
-            OPENROUTE_API_KEY: window.APP_CONFIG?.OPENROUTE_API_KEY  || '',
+            OPENROUTE_API_KEY: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0=',
             ELEVATION_API_URL: 'https://api.open-elevation.com/api/v1/lookup',
-            GRAPHHOPPER_KEY: window.APP_CONFIG?.GRAPHHOPPER_KEY    ||  '',
+            GRAPHHOPPER_KEY: 'bf786448-12b8-4aea-8549-b3cc120e9f8c',
             MAX_PINS: 20,
-            DEFAULT_CENTER: [37.9755, 23.7348], // Athens
+            DEFAULT_CENTER: [37.9755, 23.7348],
             DEFAULT_ZOOM: 13,
             STEEP_GRADIENT_THRESHOLD: 5
         };
-
-         // Έλεγχος ότι υπάρχουν keys
-        if (!CONFIG.OPENROUTE_API_KEY || !CONFIG.GRAPHHOPPER_KEY) {
-        console.error('❌  API keys missing!  Check config.js');
-        }
         
         // Global state
         const state = {
@@ -22,46 +187,41 @@
             routePolyline: null,
             elevationChart: null,
             currentRoute: null,
-            selectedMarkerIndex: -1
+            selectedMarkerIndex: -1,
+            elevationData: null,
+            routeSegments: []
         };
         
         // Initialize the application
         function initApp() {
             initMap();
             setupEventListeners();
-            console.log('Route Planner initialized');
+            console.log('Enhanced Route Planner initialized');
         }
         
         // Initialize the map
         function initMap() {
-            // Create map
             state.map = L.map('map', {
                 center: CONFIG.DEFAULT_CENTER,
                 zoom: CONFIG.DEFAULT_ZOOM,
                 zoomControl: true
             });
             
-            // Add OpenStreetMap tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 maxZoom: 19
             }).addTo(state.map);
             
-            // Map event listeners
             state.map.on('click', handleMapClick);
             state.map.on('contextmenu', handleMapRightClick);
             
-            // Try to get user's location
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const { latitude, longitude } = position.coords;
                         state.map.setView([latitude, longitude], CONFIG.DEFAULT_ZOOM);
-                        console.log('User location set:', latitude, longitude);
                     },
-                    (error) => {
-                        console.log('Geolocation failed:', error.message);
-                    },
+                    () => {},
                     { timeout: 5000 }
                 );
             }
@@ -73,7 +233,7 @@
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
         }
         
-        // Handle map click - add pin
+        // Handle map click
         function handleMapClick(e) {
             if (state.pins.length >= CONFIG.MAX_PINS) {
                 showError(`Maximum ${CONFIG.MAX_PINS} pins allowed`);
@@ -84,8 +244,6 @@
             state.pins.push(latlng);
             addMarker(latlng, state.pins.length, state.pins.length === 1);
             
-            console.log(`Pin ${state.pins.length} added at:`, latlng);
-            
             if (state.pins.length >= 2) {
                 calculateRoute();
             }
@@ -93,7 +251,7 @@
             updateInstructions();
         }
         
-        // Handle map right click - remove nearest pin
+        // Handle map right click
         function handleMapRightClick(e) {
             e.originalEvent.preventDefault();
             
@@ -102,7 +260,7 @@
             
             state.pins.forEach((pin, index) => {
                 const distance = e.latlng.distanceTo(pin);
-                if (distance < minDistance && distance < 100) { // 100m threshold
+                if (distance < minDistance && distance < 100) {
                     minDistance = distance;
                     nearestIndex = index;
                 }
@@ -132,11 +290,9 @@
                 draggable: true
             }).addTo(state.map);
             
-            // Marker events
             marker.on('dragend', (e) => {
                 const index = state.markers.indexOf(marker);
                 state.pins[index] = e.target.getLatLng();
-                console.log(`Pin ${index + 1} moved to:`, state.pins[index]);
                 
                 if (state.pins.length >= 2) {
                     calculateRoute();
@@ -152,25 +308,23 @@
             state.markers.push(marker);
         }
         
-        // Select/deselect marker
+        // Select marker
         function selectMarker(index) {
-            // Deselect previous
             if (state.selectedMarkerIndex >= 0) {
                 const prevMarker = state.markers[state.selectedMarkerIndex];
                 prevMarker.setIcon(createNumberedIcon(
-                    state.selectedMarkerIndex + 1, 
-                    state.selectedMarkerIndex === 0, 
+                    state.selectedMarkerIndex + 1,
+                    state.selectedMarkerIndex === 0,
                     false
                 ));
             }
             
-            // Select new
             if (index !== state.selectedMarkerIndex) {
                 state.selectedMarkerIndex = index;
                 const marker = state.markers[index];
                 marker.setIcon(createNumberedIcon(
-                    index + 1, 
-                    index === 0, 
+                    index + 1,
+                    index === 0,
                     true
                 ));
             } else {
@@ -182,34 +336,26 @@
         function removePin(index) {
             if (index < 0 || index >= state.pins.length) return;
             
-            // Remove marker from map
             state.map.removeLayer(state.markers[index]);
-            
-            // Remove from arrays
             state.pins.splice(index, 1);
             state.markers.splice(index, 1);
             
-            // Update marker numbers and icons
             state.markers.forEach((marker, i) => {
                 marker.setIcon(createNumberedIcon(i + 1, i === 0, false));
             });
             
-            // Reset selection
             state.selectedMarkerIndex = -1;
             
-            console.log(`Pin ${index + 1} removed. Total pins: ${state.pins.length}`);
-            
-            // Recalculate route
             if (state.pins.length >= 2) {
                 calculateRoute();
             } else {
-                clearRoute(false); // Don't clear pins
+                clearRoute(false);
             }
             
             updateInstructions();
         }
         
-        // Calculate route using multiple APIs with fallback
+        // Calculate route
         async function calculateRoute() {
             if (state.pins.length < 2) return;
             
@@ -217,8 +363,6 @@
             hideError();
             
             try {
-                console.log('Calculating route for', state.pins.length, 'pins');
-                
                 let routeData = null;
                 const apis = [
                     { name: 'OpenRouteService', func: calculateRouteOpenRoute },
@@ -242,7 +386,6 @@
                 }
                 
                 state.currentRoute = routeData;
-                displayRoute(routeData);
                 await calculateElevation(routeData);
                 
             } catch (error) {
@@ -313,7 +456,7 @@
             };
         }
         
-        // OSRM API (fallback)
+        // OSRM API
         async function calculateRouteOSRM() {
             const coordinates = state.pins.map(pin => `${pin.lng},${pin.lat}`).join(';');
             const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`;
@@ -338,7 +481,7 @@
             };
         }
         
-        // Decode polyline (for GraphHopper)
+        // Decode polyline
         function decodePolyline(str, precision = 5) {
             let index = 0;
             let lat = 0;
@@ -378,52 +521,21 @@
             return coordinates;
         }
         
-        // Display route on map
-        function displayRoute(route) {
-            // Remove existing route
-            if (state.routePolyline) {
-                state.map.removeLayer(state.routePolyline);
-            }
-            
-            // Add new route
-            state.routePolyline = L.polyline(route.coordinates, {
-                color: '#3B82F6',
-                weight: 4,
-                opacity: 0.8,
-                smoothFactor: 1
-            }).addTo(state.map);
-            
-            // Fit map to route bounds
-            const group = new L.featureGroup([state.routePolyline, ...state.markers]);
-            state.map.fitBounds(group.getBounds(), { padding: [20, 20] });
-            
-            // Show download button
-            document.getElementById('downloadGPX').style.display = 'flex';
-            
-            // Update route stats immediately
-            updateRouteStats({ distance: route.distance });
-            
-            console.log('Route displayed:', route.distance, 'meters');
-        }
-        
-        // Calculate elevation profile
+        // Calculate elevation
         async function calculateElevation(route) {
             try {
-                console.log('Calculating elevation for route...');
+                console.log('Calculating elevation...');
                 
-                // Sample points along route (max 50 for better performance)
-                const maxPoints = 50;
+                const maxPoints = 100;
                 const step = Math.max(1, Math.floor(route.coordinates.length / maxPoints));
                 const samplePoints = route.coordinates.filter((_, index) => index % step === 0);
                 
-                // Ensure we include the last point
                 if (samplePoints[samplePoints.length - 1] !== route.coordinates[route.coordinates.length - 1]) {
                     samplePoints.push(route.coordinates[route.coordinates.length - 1]);
                 }
                 
-                // Try elevation API with timeout
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
                 
                 const response = await fetch(CONFIG.ELEVATION_API_URL, {
                     method: 'POST',
@@ -455,18 +567,16 @@
                 
             } catch (error) {
                 console.log('Elevation calculation failed, using mock data:', error.message);
-                // Use mock elevation data as fallback
                 createMockElevationData(route);
             }
         }
         
-        // Create mock elevation data when API fails
+        // Create mock elevation data
         function createMockElevationData(route) {
-            const mockPoints = 20;
+            const mockPoints = 50;
             const step = Math.max(1, Math.floor(route.coordinates.length / mockPoints));
             const samplePoints = route.coordinates.filter((_, index) => index % step === 0);
             
-            // Generate realistic elevation profile
             const mockElevationResults = samplePoints.map((coord, index) => {
                 const baseElevation = 100;
                 const variation = Math.sin(index * 0.3) * 80 + Math.cos(index * 0.1) * 40;
@@ -477,10 +587,9 @@
             });
             
             processElevationData(mockElevationResults, samplePoints, route);
-            console.log('Mock elevation data created');
         }
         
-        // Process elevation data and create profile
+        // Process elevation data
         function processElevationData(elevationResults, coordinates, route) {
             let cumulativeDistance = 0;
             const elevationData = [];
@@ -496,7 +605,6 @@
                     cumulativeDistance += segmentDistance;
                 }
                 
-                // Calculate gradient
                 let gradient = 0;
                 if (index > 0) {
                     const elevationDiff = point.elevation - elevationResults[index - 1].elevation;
@@ -510,24 +618,100 @@
                     distance: cumulativeDistance,
                     elevation: point.elevation,
                     gradient: gradient,
-                    isSteep: gradient > CONFIG.STEEP_GRADIENT_THRESHOLD
+                    isSteep: gradient > CONFIG.STEEP_GRADIENT_THRESHOLD,
+                    coordinates: coordinates[index]
                 });
             });
             
-            // Update UI
-            updateRouteStats({
-                distance: route.distance,
-                elevationData: elevationData
-            });
+            state.elevationData = elevationData;
+            displayRouteWithGradients(route, elevationData, coordinates);
+            updateRouteStats(route.distance, elevationData);
             displayElevationChart(elevationData);
             showElevationSection(true);
             
             console.log('Elevation profile calculated:', elevationData.length, 'points');
         }
         
-        // Calculate distance between two coordinates (Haversine formula)
+        // Display route with gradient colors
+        function displayRouteWithGradients(route, elevationData, elevationCoordinates) {
+            // Remove existing route
+            if (state.routePolyline) {
+                if (Array.isArray(state.routePolyline)) {
+                    state.routePolyline.forEach(polyline => state.map.removeLayer(polyline));
+                } else {
+                    state.map.removeLayer(state.routePolyline);
+                }
+            }
+            
+            // Create route segments with gradient colors
+            const segments = [];
+            let currentSegment = [];
+            let currentColor = '#3B82F6';
+            
+            for (let i = 0; i < route.coordinates.length; i++) {
+                const coord = route.coordinates[i];
+                
+                // Find corresponding elevation data
+                let isSteep = false;
+                let minDistance = Infinity;
+                
+                for (let j = 0; j < elevationCoordinates.length; j++) {
+                    const dist = calculateDistance(coord[0], coord[1], elevationCoordinates[j][0], elevationCoordinates[j][1]);
+                    if (dist < minDistance && dist < 100) {
+                        minDistance = dist;
+                        isSteep = elevationData[j]?.isSteep || false;
+                    }
+                }
+                
+                const color = isSteep ? '#EF4444' : '#3B82F6';
+                
+                if (currentSegment.length === 0) {
+                    currentSegment.push(coord);
+                    currentColor = color;
+                } else if (color === currentColor) {
+                    currentSegment.push(coord);
+                } else {
+                    if (currentSegment.length > 1) {
+                        segments.push({
+                            coordinates: [...currentSegment],
+                            color: currentColor
+                        });
+                    }
+                    
+                    const lastCoord = currentSegment[currentSegment.length - 1];
+                    currentSegment = [lastCoord, coord];
+                    currentColor = color;
+                }
+            }
+            
+            if (currentSegment.length > 1) {
+                segments.push({
+                    coordinates: [...currentSegment],
+                    color: currentColor
+                });
+            }
+            
+            // Create polylines for each segment
+            state.routeSegments = segments;
+            state.routePolyline = segments.map(segment => 
+                L.polyline(segment.coordinates, {
+                    color: segment.color,
+                    weight: 4,
+                    opacity: 0.8,
+                    smoothFactor: 1
+                }).addTo(state.map)
+            );
+            
+            // Fit map to route bounds
+            const group = new L.featureGroup([...state.routePolyline, ...state.markers]);
+            state.map.fitBounds(group.getBounds(), { padding: [20, 20] });
+            
+            document.getElementById('downloadGPX').style.display = 'flex';
+        }
+        
+        // Calculate distance
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Earth's radius in meters
+            const R = 6371e3;
             const φ1 = lat1 * Math.PI / 180;
             const φ2 = lat2 * Math.PI / 180;
             const Δφ = (lat2 - lat1) * Math.PI / 180;
@@ -542,10 +726,7 @@
         }
         
         // Update route statistics
-        function updateRouteStats(data) {
-            const { distance, elevationData } = data;
-            
-            // Format distance
+        function updateRouteStats(distance, elevationData) {
             const distanceFormatted = distance > 1000 
                 ? `${(distance / 1000).toFixed(1)} km`
                 : `${Math.round(distance)} m`;
@@ -553,14 +734,19 @@
             document.getElementById('totalDistance').textContent = distanceFormatted;
             
             if (elevationData && elevationData.length > 0) {
-                // Calculate elevation gain and loss
                 let elevationGain = 0;
                 let elevationLoss = 0;
+                let steepUphillDistance = 0;
                 
                 for (let i = 1; i < elevationData.length; i++) {
                     const diff = elevationData[i].elevation - elevationData[i - 1].elevation;
+                    const segmentDistance = elevationData[i].distance - elevationData[i - 1].distance;
+                    
                     if (diff > 0) {
                         elevationGain += diff;
+                        if (elevationData[i].isSteep) {
+                            steepUphillDistance += segmentDistance;
+                        }
                     } else {
                         elevationLoss += Math.abs(diff);
                     }
@@ -568,9 +754,15 @@
                 
                 document.getElementById('elevationGain').textContent = `+${Math.round(elevationGain)} m`;
                 document.getElementById('elevationLoss').textContent = `-${Math.round(elevationLoss)} m`;
+                
+                const steepDistanceFormatted = steepUphillDistance > 1000 
+                    ? `${(steepUphillDistance / 1000).toFixed(1)} km`
+                    : `${Math.round(steepUphillDistance)} m`;
+                document.getElementById('steepUphillDistance').textContent = steepDistanceFormatted;
             } else {
                 document.getElementById('elevationGain').textContent = '-';
                 document.getElementById('elevationLoss').textContent = '-';
+                document.getElementById('steepUphillDistance').textContent = '-';
             }
         }
         
@@ -582,16 +774,12 @@
                 state.elevationChart.destroy();
             }
             
+            document.getElementById('noElevationMessage').style.display = 'none';
+            
             const distances = elevationData.map(d => d.distance > 1000 
                 ? (d.distance / 1000).toFixed(1) 
                 : Math.round(d.distance));
             const elevations = elevationData.map(d => d.elevation);
-            const backgroundColors = elevationData.map(d => 
-                d.isSteep ? 'rgba(239, 68, 68, 0.6)' : 'rgba(59, 130, 246, 0.6)'
-            );
-            const borderColors = elevationData.map(d => 
-                d.isSteep ? '#EF4444' : '#3B82F6'
-            );
             
             state.elevationChart = new Chart(ctx, {
                 type: 'line',
@@ -604,9 +792,9 @@
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
                         borderWidth: 2,
                         fill: true,
-                        pointBackgroundColor: borderColors,
-                        pointBorderColor: borderColors,
-                        pointRadius: 3,
+                        pointBackgroundColor: '#3B82F6',
+                        pointBorderColor: '#3B82F6',
+                        pointRadius: 2,
                         pointHoverRadius: 5,
                         tension: 0.1
                     }]
@@ -617,6 +805,14 @@
                     interaction: {
                         intersect: false,
                         mode: 'index'
+                    },
+                    onHover: (event, activeElements) => {
+                        if (activeElements.length > 0) {
+                            const index = activeElements[0].index;
+                            highlightRouteSegment(index);
+                        } else {
+                            clearHighlight();
+                        }
                     },
                     scales: {
                         x: {
@@ -647,7 +843,10 @@
                                 label: function(context) {
                                     const point = elevationData[context.dataIndex];
                                     const gradient = point.gradient ? ` (${point.gradient.toFixed(1)}° gradient)` : '';
-                                    return `Elevation: ${Math.round(point.elevation)}m${gradient}`;
+                                    return [
+                                        `Elevation: ${Math.round(point.elevation)}m`,
+                                        `Gradient: ${point.gradient.toFixed(1)}°`
+                                    ];
                                 }
                             }
                         },
@@ -657,48 +856,85 @@
                     }
                 }
             });
-            
-            console.log('Elevation chart displayed');
         }
         
-        // Show/hide elevation section
+        // Highlight route segment
+        function highlightRouteSegment(index) {
+            clearHighlight();
+            
+            if (!state.elevationData || !state.routeSegments) return;
+            
+            const point = state.elevationData[index];
+            if (!point || !point.coordinates) return;
+            
+            // Create highlighting circle
+            const highlight = L.circleMarker([point.coordinates[0], point.coordinates[1]], {
+                radius: 8,
+                fillColor: '#FFC107',
+                color: '#FF9800',
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(state.map);
+            
+            state.highlightMarker = highlight;
+        }
+        
+        // Clear highlight
+        function clearHighlight() {
+            if (state.highlightMarker) {
+                state.map.removeLayer(state.highlightMarker);
+                state.highlightMarker = null;
+            }
+        }
+        
+        // Show elevation section
         function showElevationSection(show) {
             document.getElementById('elevationSection').style.display = show ? 'block' : 'none';
         }
         
-        // Clear route and optionally pins
+        // Clear route
         function clearRoute(clearPins = true) {
             if (clearPins) {
-                // Remove all markers
                 state.markers.forEach(marker => state.map.removeLayer(marker));
                 state.markers = [];
                 state.pins = [];
                 state.selectedMarkerIndex = -1;
             }
             
-            // Remove route
             if (state.routePolyline) {
-                state.map.removeLayer(state.routePolyline);
+                if (Array.isArray(state.routePolyline)) {
+                    state.routePolyline.forEach(polyline => state.map.removeLayer(polyline));
+                } else {
+                    state.map.removeLayer(state.routePolyline);
+                }
                 state.routePolyline = null;
             }
             
-            // Clear elevation chart
+            clearHighlight();
+            
             if (state.elevationChart) {
                 state.elevationChart.destroy();
                 state.elevationChart = null;
             }
             
-            // Reset UI
             state.currentRoute = null;
-            showElevationSection(false);
+            state.elevationData = null;
+            state.routeSegments = [];
+            
             document.getElementById('downloadGPX').style.display = 'none';
             updateInstructions();
             hideError();
             
-            console.log('Route cleared');
+            document.getElementById('totalDistance').textContent = 'Click on map to start';
+            document.getElementById('steepUphillDistance').textContent = '-';
+            document.getElementById('elevationGain').textContent = '-';
+            document.getElementById('elevationLoss').textContent = '-';
+            
+            document.getElementById('noElevationMessage').style.display = 'flex';
         }
         
-        // Download GPX file
+        // Download GPX
         function downloadGPX() {
             if (!state.currentRoute) {
                 showError('No route to download');
@@ -716,16 +952,14 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            
-            console.log('GPX file downloaded');
         }
         
-        // Generate GPX content
+        // Generate GPX
         function generateGPX(route) {
             const timestamp = new Date().toISOString();
             
             let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Route Planner" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="Enhanced Route Planner" xmlns="http://www.topografix.com/GPX/1/1">
   <metadata>
     <name>Planned Route</name>
     <time>${timestamp}</time>
@@ -742,7 +976,6 @@
     </trkseg>
   </trk>`;
             
-            // Add waypoints for pins
             state.pins.forEach((pin, index) => {
                 const name = index === 0 ? 'Start' : `Waypoint ${index}`;
                 gpx += `\n  <wpt lat="${pin.lat}" lon="${pin.lng}">
@@ -756,12 +989,12 @@
             return gpx;
         }
         
-        // Show loading indicator
+        // Show loading
         function showLoading(show) {
             document.getElementById('loadingMessage').style.display = show ? 'flex' : 'none';
         }
         
-        // Show error message
+        // Show error
         function showError(message) {
             const errorEl = document.getElementById('errorMessage');
             const errorText = document.getElementById('errorText');
@@ -770,7 +1003,6 @@
             errorEl.style.display = 'block';
             errorEl.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 mx-4 mt-2 rounded relative z-40';
             
-            // Auto-hide after 5 seconds
             setTimeout(() => {
                 errorEl.className += ' error-fade';
                 setTimeout(() => hideError(), 1000);
@@ -779,36 +1011,34 @@
             console.log('Error shown:', message);
         }
         
-        // Hide error message
+        // Hide error
         function hideError() {
             const errorEl = document.getElementById('errorMessage');
             errorEl.style.display = 'none';
             errorEl.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 mx-4 mt-2 rounded relative z-40';
         }
         
-        // Update instructions visibility
+        // Update instructions
         function updateInstructions() {
             const instructionsEl = document.getElementById('instructions');
             instructionsEl.style.display = state.pins.length === 0 ? 'block' : 'none';
         }
         
-        // Initialize app when DOM is loaded
+        // Initialize
         document.addEventListener('DOMContentLoaded', initApp);
         
-        // Handle window resize
+        // Handle resize
         window.addEventListener('resize', () => {
-            if (state.map) {
-                setTimeout(() => {
-                    state.map.invalidateSize();
-                }, 100);
-            }
+            setTimeout(() => {
+                state.map.invalidateSize();
+            }, 100);
         });
         
-        // Prevent context menu on map
         document.addEventListener('contextmenu', (e) => {
             if (e.target.closest('#map')) {
                 e.preventDefault();
             }
         });
-        
-        console.log('Route Planner script loaded');
+    </script>
+</body>
+</html>
