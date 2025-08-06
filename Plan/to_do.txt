@@ -5,6 +5,7 @@
     πάνω στον χάρτη
 
 -Να προσθέσω oneway διαδρομή ή διαδρομή με επιστροφή στο αρχικό σημείο
+Στην web app εφαρμογή που σου ανέβασα θέλω να προσθέσω μία επιπλέον λειτουργία. Θέλω στο μενού Floating menu panel να μου προσθέσεις ένα κουμπάκι toggle που να έχει την εξής λειτουργία. Να αλλάζει την διαδρομή όταν το ενεργοποιει ο χρήστης και να επιστρέφει στο 1ο pin (την αρχική τοποθεσία δηλαδή που επέλεξε ο χρήστης), να κάνει δηλαδή round trip και να καταλήγει η διαδρομή στο αρχικό σημείο. ( όπως και στο https://www.komoot.com/plan The Best Route Planner for Cycling, Walking, Hiking and Running | Komoot The Best Route Planner for Cycling, Walking, Hiking and Running | Komoot   The Best Route Planner for Cycling, Walking, Hiking and Running | Komoot The Best Route Planner for Cycling, Walking, Hiking and Running | Komoot  ο χρήστης έχει την επιλογή one-way or round trip). Μην αλλάξεις κάτι άλλο στον κώδικά του app απλά προσθεσε μου την εξτρα λειτουργία που σου ανέφερα παραπάνω. Γυρισε μου ένα λειτουργικό html arxeio
 
 
 UI τροποποιήσεις
