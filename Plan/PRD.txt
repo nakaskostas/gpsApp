@@ -21,7 +21,7 @@ a backend database.
 
 #### 1.1 Map Display
 
--   **Map Provider**: OpenStreetMap tiles via open source services
+-   **Map Provider**: OpenStreetMap tiles via open source services [Context7 Link](https://context7.com/igor-suhorukov/openstreetmap_h3/llms.txt)
 -   **Initial View**: Centered on user's location (or default location
     if geolocation unavailable)
 -   **Zoom Controls**: Standard zoom in/out functionality
@@ -42,7 +42,7 @@ a backend database.
 #### 1.3 Route Optimization
 
 -   **Routing Engine**: Use OpenRouteService API or similar open source
-    routing
+    routing [Context7 Link](https://context7.com/giscience/openrouteservice/llms.txt)
 -   **Route Type**: Road network only (no off-road routing)
 -   **Route Display**: Clear line visualization between pins
 -   **Real-time Updates**: Route recalculates automatically when pins
@@ -58,6 +58,9 @@ a backend database.
     APIs
 -   **X-axis**: Distance along route(on meters or kilometers if the distance is >1000m)
 -   **Y-axis**: Elevation in meters
+-   **Output**: 
+      - On the left, show me the total length of the route (in meters if it’s < 1 000 m, otherwise in kilometers)
+      - on the right display the elevation profile of the route. Wherever the uphill gradient is > 5°, mark it in red on the chart.
 
 #### 2.2 Gradient Visualization
 
@@ -79,15 +82,15 @@ a backend database.
 #### 3.1 Architecture
 
 -   **Type**: Single Page Application (SPA)
--   **Framework**: node.js or React
+-   **Framework**: --------------------------------------
 -   **No Backend**: All processing client-side
 -   **No Database**: No persistent data storage
 
 #### 3.2 APIs and Services
 
 -   **Map Tiles**: OpenStreetMap
--   **Routing**: OpenRouteService API or GraphHopper
--   **Elevation Data**: Open-Elevation API
+-   **Routing**: OpenRouteService API (key='eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0=')
+-   **Elevation Data**: Open-Elevation API (elev_url='https://api.open-elevation.com/api/v1/lookup')
 -   **Rate Limiting**: Implement request throttling to respect API
     limits
 
@@ -97,6 +100,8 @@ a backend database.
 -   **Route Calculation**: < 2 seconds for routes up to 100km
 -   **Elevation Profile**: Generate within 1 second of route calculation
 -   **Memory Usage**: Efficient cleanup of unused route data
+
+
 
 ## User Interface Requirements
 
@@ -133,8 +138,8 @@ a backend database.
 
 ### 5.2 API Dependencies
 
--   **Primary Routing**: OpenRouteService (free tier: 2000 requests/day)
--   **Fallback Routing**: GraphHopper or MapBox (if needed)
+-   **Primary Routing**: OpenRouteService (free tier: 2000 requests/day) 
+-   **Fallback Routing**: GraphHopper, GraphHopper API key (bf786448-12b8-4aea-8549-b3cc120e9f8c) [Context7 Link](https://context7.com/graphhopper/graphhopper/llms.txt)
 -   **Elevation**: Open-Elevation API (unlimited, open source)
 -   **Error Handling**: Pop up window if any API errors occur
 
@@ -185,3 +190,5 @@ a backend database.
 -   Test gradient calculation accuracy
 -   Test API error handling
 -   Cross-browser compatibility testing
+
+

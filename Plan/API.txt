@@ -4,3 +4,6 @@ GraphHopper (https://www.graphhopper.com/)
 
 
 openrouteservice (https://openrouteservice.org/)
+
+Up-to-date documentation for LLMs and AI code editors (https://context7.com/)
+

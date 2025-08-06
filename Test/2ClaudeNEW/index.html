@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Route Planner</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    
+    <!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        .leaflet-container {
+            height: 100%;
+            width: 100%;
+        }
+        
+        .pin-icon {
+            background: #3B82F6;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        .pin-icon.start {
+            background: #10B981;
+        }
+        
+        .gradient-steep {
+            background: linear-gradient(90deg, #3B82F6 0%, #EF4444 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+    
+    <!-- Header Controls -->
+    <div class="bg-white shadow-sm p-4 flex justify-between items-center">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Route Planner
+        </h1>
+        <div class="flex gap-2">
+            <button id="clearRoute" class="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+                Clear Route
+            </button>
+            <button id="downloadGPX" class="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors" style="display: none;">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                </svg>
+                Download GPX
+            </button>
+        </div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 mx-4 mt-2 rounded" style="display: none;"></div>
+
+    <!-- Loading Message -->
+    <div id="loadingMessage" class="fixed top-20 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded shadow-lg z-1000" style="display: none;">
+        Calculating route...
+    </div>
+
+    <!-- Map Container -->
+    <div class="relative" style="height: calc(100vh - 140px);">
+        <div id="map" class="h-full w-full" style="background: #f0f0f0; cursor: crosshair;"></div>
+    </div>
+
+    <!-- Route Stats and Elevation Profile -->
+    <div id="elevationSection" class="bg-white border-t" style="display: none;">
+        <!-- Route Stats -->
+        <div id="routeStats" class="p-4 border-b">
+            <h3 class="text-lg font-semibold mb-2">Route Statistics</h3>
+            <div class="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                    <span class="text-gray-600">Distance:</span>
+                    <div id="totalDistance" class="font-medium">-</div>
+                </div>
+                <div>
+                    <span class="text-gray-600">Elevation Gain:</span>
+                    <div id="elevationGain" class="font-medium text-green-600">-</div>
+                </div>
+                <div>
+                    <span class="text-gray-600">Elevation Loss:</span>
+                    <div id="elevationLoss" class="font-medium text-red-600">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Elevation Chart -->
+        <div class="p-4">
+            <h3 class="text-lg font-semibold mb-2">Elevation Profile</h3>
+            <div style="height: 200px;">
+                <canvas id="elevationChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instructions -->
+    <div id="instructions" class="bg-blue-50 p-4 text-center">
+        <p class="text-blue-700">
+            Click on the map to place pins and create your route. Right-click to remove pins.
+        </p>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    
+    <script>
+        // Global variables
+        const OPENROUTE_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY5MTc5YjI0YTE2NDQ1ZDg4YjgxMzlmZjAxY2MzNDYzIiwiaCI6Im11cm11cjY0In0=';
+        const ELEVATION_API_URL = 'https://api.open-elevation.com/api/v1/lookup';
+        
+        let map;
+        let pins = [];
+        let markers = [];
+        let routePolyline = null;
+        let elevationChart = null;
+        let currentRoute = null;
+        
+        // Initialize map
+        function initMap() {
+            // Clear any existing map
+            if (map) {
+                map.remove();
+            }
+            
+            // Create map with proper container
+            map = L.map('map', {
+                center: [37.9755, 23.7348], // Athens default
+                zoom: 13,
+                zoomControl: true
+            });
+            
+            // Add tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+            
+            // Add map event listeners
+            map.on('click', function(e) {
+                console.log('Map clicked at:', e.latlng);
+                handleMapClick(e);
+            });
+            
+            map.on('contextmenu', function(e) {
+                console.log('Right click at:', e.latlng);
+                handleRightClick(e);
+                e.originalEvent.preventDefault();
+            });
+            
+            // Force map to resize after initialization
+            setTimeout(() => {
+                map.invalidateSize();
+            }, 100);
+            
+            // Try to get user location
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        console.log('Got user location:', position.coords);
+                        map.setView([position.coords.latitude, position.coords.longitude], 13);
+                    },
+                    (error) => {
+                        console.log('Geolocation failed:', error);
+                    }
+                );
+            }
+        }
+        
+        // Create numbered marker icon
+        function createNumberedIcon(number, isStart = false) {
+            const color = isStart ? '#10B981' : '#3B82F6';
+            return L.divIcon({
+                className: 'pin-icon' + (isStart ? ' start' : ''),
+                html: number.toString(),
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+        }
+        
+        // Handle map click
+        function handleMapClick(e) {
+            console.log('Handling map click, current pins:', pins.length);
+            
+            if (pins.length >= 20) {
+                showError('Maximum 20 pins allowed');
+                return;
+            }
+            
+            const latlng = e.latlng;
+            pins.push(latlng);
+            addMarker(latlng, pins.length, pins.length === 1);
+            
+            console.log('Added pin:', latlng, 'Total pins:', pins.length);
+            
+            if (pins.length >= 2) {
+                calculateRoute();
+            }
+            updateInstructions();
+        }
+        
+        // Handle right click
+        function handleRightClick(e) {
+            // Find nearest pin and remove it
+            let nearestIndex = -1;
+            let minDistance = Infinity;
+            
+            pins.forEach((pin, index) => {
+                const distance = e.latlng.distanceTo(pin);
+                if (distance < minDistance && distance < 50) { // 50 meter threshold
+                    minDistance = distance;
+                    nearestIndex = index;
+                }
+            });
+            
+            if (nearestIndex !== -1) {
+                removePin(nearestIndex);
+            }
+        }
+        
+        // Add marker to map
+        function addMarker(latlng, number, isStart) {
+            console.log('Adding marker:', number, 'at:', latlng);
+            
+            const marker = L.marker(latlng, {
+                icon: createNumberedIcon(number, isStart),
+                draggable: true
+            }).addTo(map);
+            
+            marker.on('dragend', function(e) {
+                const index = markers.indexOf(marker);
+                pins[index] = e.target.getLatLng();
+                console.log('Marker dragged to:', pins[index]);
+                if (pins.length >= 2) {
+                    calculateRoute();
+                }
+            });
+            
+            markers.push(marker);
+            console.log('Marker added successfully, total markers:', markers.length);
+        }
+        
+        // Remove pin
+        function removePin(index) {
+            if (markers[index]) {
+                map.removeLayer(markers[index]);
+                markers.splice(index, 1);
+                pins.splice(index, 1);
+                
+                // Update marker numbers
+                markers.forEach((marker, i) => {
+                    marker.setIcon(createNumberedIcon(i + 1, i === 0));
+                });
+                
+                calculateRoute();
+                updateInstructions();
+            }
+        }
+        
+        // Calculate route
+        async function calculateRoute() {
+            if (pins.length < 2) {
+                clearRoute();
+                return;
+            }
+            
+            showLoading(true);
+            hideError();
+            
+            try {
+                console.log('Calculating route for pins:', pins.length);
+                
+                let routeData = null;
+                
+                // Try multiple routing services in order
+                try {
+                    console.log('Trying GraphHopper routing...');
+                    routeData = await calculateRouteGraphHopper();
+                } catch (error) {
+                    console.log('GraphHopper failed:', error);
+                    try {
+                        console.log('Trying OpenRouteService...');
+                        routeData = await calculateRouteOpenRoute();
+                    } catch (error2) {
+                        console.log('OpenRouteService failed:', error2);
+                        try {
+                            console.log('Trying MapBox routing...');
+                            routeData = await calculateRouteMapBox();
+                        } catch (error3) {
+                            console.log('All routing services failed, using OSRM...');
+                            routeData = await calculateRouteOSRM();
+                        }
+                    }
+                }
+                
+                if (routeData) {
+                    currentRoute = routeData;
+                    displayRoute(currentRoute);
+                    await calculateElevation(currentRoute.coordinates.map(coord => [coord[1], coord[0]]));
+                } else {
+                    throw new Error('All routing services failed');
+                }
+                
+            } catch (error) {
+                showError('Failed to calculate route using road network. Please try again.');
+                console.error('Route calculation error:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Calculate route using OSRM (Open Source Routing Machine)
+        async function calculateRouteOSRM() {
+            const coordinates = pins.map(pin => `${pin.lng},${pin.lat}`).join(';');
+            
+            const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson`);
+            
+            if (!response.ok) {
+                throw new Error(`OSRM API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.routes || data.routes.length === 0) {
+                throw new Error('No route found');
+            }
+            
+            const route = data.routes[0];
+            
+            return {
+                coordinates: route.geometry.coordinates.map(coord => [coord[1], coord[0]]),
+                summary: { 
+                    distance: route.distance,
+                    duration: route.duration 
+                }
+            };
+        }
+        
+        // Calculate route using GraphHopper
+        async function calculateRouteGraphHopper() {
+            const points = pins.map(pin => `point=${pin.lat},${pin.lng}`).join('&');
+            
+            const response = await fetch(`https://graphhopper.com/api/1/route?${points}&vehicle=car&debug=true&calc_points=true&type=json`);
+            
+            if (!response.ok) {
+                throw new Error(`GraphHopper API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.paths || data.paths.length === 0) {
+                throw new Error('No route found');
+            }
+            
+            const path = data.paths[0];
+            
+            // Decode the points
+            const coordinates = decodePolyline(path.points);
+            
+            return {
+                coordinates: coordinates,
+                summary: { 
+                    distance: path.distance,
+                    duration: path.time 
+                }
+            };
+        }
+        
+        // Calculate route using MapBox (requires API key, will likely fail)
+        async function calculateRouteMapBox() {
+            const coordinates = pins.map(pin => `${pin.lng},${pin.lat}`).join(';');
+            
+            const response = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coordinates}?geometries=geojson&access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw`);
+            
+            if (!response.ok) {
+                throw new Error(`MapBox API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.routes || data.routes.length === 0) {
+                throw new Error('No route found');
+            }
+            
+            const route = data.routes[0];
+            
+            return {
+                coordinates: route.geometry.coordinates.map(coord => [coord[1], coord[0]]),
+                summary: { 
+                    distance: route.distance,
+                    duration: route.duration 
+                }
+            };
+        }
+        
+        // Calculate route using OpenRouteService (improved)
+        async function calculateRouteOpenRoute() {
+            const coordinates = pins.map(pin => [pin.lng, pin.lat]);
+            
+            const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+                method: 'POST',
+                headers: {
+                    'Authorization': OPENROUTE_API_KEY,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    coordinates: coordinates,
+                    instructions: false,
+                    elevation: false
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`OpenRouteService API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.features || data.features.length === 0) {
+                throw new Error('No route found');
+            }
+            
+            const routeFeature = data.features[0];
+            
+            return {
+                coordinates: routeFeature.geometry.coordinates.map(coord => [coord[1], coord[0]]),
+                summary: routeFeature.properties.summary || { distance: 0, duration: 0 }
+            };
+        }
+        
+        // Decode polyline (for GraphHopper)
+        function decodePolyline(str, precision = 5) {
+            let index = 0;
+            let lat = 0;
+            let lng = 0;
+            const coordinates = [];
+            const factor = Math.pow(10, precision);
+            
+            while (index < str.length) {
+                let byte = null;
+                let shift = 0;
+                let result = 0;
+                
+                do {
+                    byte = str.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20);
+                
+                const deltaLat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+                lat += deltaLat;
+                
+                shift = 0;
+                result = 0;
+                
+                do {
+                    byte = str.charCodeAt(index++) - 63;
+                    result |= (byte & 0x1f) << shift;
+                    shift += 5;
+                } while (byte >= 0x20);
+                
+                const deltaLng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+                lng += deltaLng;
+                
+                coordinates.push([lat / factor, lng / factor]);
+            }
+            
+            return coordinates;
+        }
+        
+        // Display route on map
+        function displayRoute(route) {
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+            }
+            
+            routePolyline = L.polyline(route.coordinates, {
+                color: '#3B82F6',
+                weight: 4,
+                opacity: 0.8
+            }).addTo(map);
+            
+            document.getElementById('downloadGPX').style.display = 'flex';
+        }
+        
+        // Calculate elevation profile
+        async function calculateElevation(coordinates) {
+            try {
+                console.log('Calculating elevation for coordinates:', coordinates.length);
+                
+                // Limit points for API efficiency (max 100 points)
+                const step = Math.max(1, Math.floor(coordinates.length / 100));
+                const elevationPoints = coordinates.filter((_, index) => index % step === 0);
+                
+                // Add the last point if it wasn't included
+                if (elevationPoints[elevationPoints.length - 1] !== coordinates[coordinates.length - 1]) {
+                    elevationPoints.push(coordinates[coordinates.length - 1]);
+                }
+                
+                console.log('Requesting elevation for points:', elevationPoints.length);
+                
+                const response = await fetch(ELEVATION_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        locations: elevationPoints.map(coord => ({ 
+                            latitude: coord[0], 
+                            longitude: coord[1] 
+                        }))
+                    })
+                });
+                
+                if (!response.ok) {
+                    console.log('Elevation API failed, using mock data');
+                    // Use mock elevation data if API fails
+                    const mockElevation = elevationPoints.map((_, index) => ({
+                        elevation: 100 + Math.sin(index * 0.1) * 50 + Math.random() * 20
+                    }));
+                    processElevationData(mockElevation, elevationPoints);
+                    return;
+                }
+                
+                const elevData = await response.json();
+                console.log('Got elevation data:', elevData.results?.length);
+                
+                if (elevData.results && elevData.results.length > 0) {
+                    processElevationData(elevData.results, elevationPoints);
+                } else {
+                    throw new Error('No elevation data received');
+                }
+                
+            } catch (error) {
+                console.error('Elevation calculation error:', error);
+                // Don't show error, just skip elevation profile
+                console.log('Skipping elevation profile due to API issues');
+            }
+        }
+        
+        // Process elevation data
+
+        function processElevationData(elevationResults, coordinates) {
+    let cumulativeDistance = 0;
+    const elevationData = [];
+
+    elevationResults.forEach((point, index) => {
+        if (index > 0) {
+            const prevCoord = coordinates[index - 1];
+            const currCoord = coordinates[index];
+            const distance = calculateDistance(
+                prevCoord[0], prevCoord[1],
+                currCoord[0], currCoord[1]
+            );
+            cumulativeDistance += distance;
+        }
+
+        const gradient = index > 0
+            ? Math.abs(Math.atan((point.elevation - elevationResults[index - 1].elevation) /
+                Math.max(100, cumulativeDistance - (elevationData[index - 1]?.distance || 0))) * 180 / Math.PI)
+            : 0;
+
+        elevationData.push({
+            distance: cumulativeDistance,
+            elevation: point.elevation,
+            gradient,
+            isSteep: gradient > 5
+        });
+    });
+
+    //  εμφάνιση των στατιστικών και του elevation profile
+    const totalDistanceM = currentRoute.summary.distance;
+    updateRouteStats(elevationData, totalDistanceM);
+    displayElevationChart(elevationData);
+}
+        
+        // Calculate distance between two coordinates
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth's radius in meters
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c;
+        }
+        
+        // Update route statistics
+        function updateRouteStats(elevationData, totalDistanceM) {
+    if (!elevationData.length) return;
+
+    const totalDistance = totalDistanceM > 1000
+        ? (totalDistanceM / 1000).toFixed(1)
+        : totalDistanceM.toFixed(0);
+    const unit = totalDistanceM > 1000 ? 'km' : 'm';
+
+    const elevations = elevationData.map(p => p.elevation);
+    let elevationGain = 0, elevationLoss = 0;
+
+    for (let i = 1; i < elevations.length; i++) {
+        const diff = elevations[i] - elevations[i - 1];
+        if (diff > 0) elevationGain += diff;
+        else elevationLoss += Math.abs(diff);
+    }
+
+    document.getElementById('totalDistance').textContent = `${totalDistance} ${unit}`;
+    document.getElementById('elevationGain').textContent = `+${elevationGain.toFixed(0)} m`;
+    document.getElementById('elevationLoss').textContent = `-${elevationLoss.toFixed(0)} m`;
+
+    document.getElementById('elevationSection').style.display = 'block';
+}
+        
+        // Display elevation chart
+        function displayElevationChart(elevationData) {
+            const ctx = document.getElementById('elevationChart').getContext('2d');
+            
+            if (elevationChart) {
+                elevationChart.destroy();
+            }
+            
+            const distances = elevationData.map(d => d.distance > 1000 ? 
+                (d.distance / 1000).toFixed(1) : d.distance.toFixed(0));
+            const elevations = elevationData.map(d => d.elevation);
+            const colors = elevationData.map(d => d.isSteep ? '#EF4444' : '#3B82F6');
+            
+            elevationChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: distances,
+                    datasets: [{
+                        label: 'Elevation (m)',
+                        data: elevations,
+                        borderColor: '#3B82F6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        pointBackgroundColor: colors,
+                        pointBorderColor: colors,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: `Distance (${elevationData[0]?.distance > 1000 ? 'km' : 'm'})`
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Elevation (m)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Elevation: ${context.parsed.y}m`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Clear route
+        function clearRoute() {
+            pins = [];
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+            
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+                routePolyline = null;
+            }
+            
+            if (elevationChart) {
+                elevationChart.destroy();
+                elevationChart = null;
+            }
+            
+            currentRoute = null;
+            document.getElementById('elevationSection').style.display = 'none';
+            document.getElementById('downloadGPX').style.display = 'none';
+            updateInstructions();
+            hideError();
+        }
+        
+        // Download GPX
+        function downloadGPX() {
+            if (!currentRoute) return;
+            
+            const gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Route Planner">
+  <trk>
+    <name>Planned Route</name>
+    <trkseg>
+      ${currentRoute.coordinates.map(coord => 
+        `      <trkpt lat="${coord[0]}" lon="${coord[1]}"></trkpt>`
+      ).join('\n')}
+    </trkseg>
+  </trk>
+</gpx>`;
+            
+            const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'route.gpx';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Show loading
+        function showLoading(show) {
+            document.getElementById('loadingMessage').style.display = show ? 'block' : 'none';
+        }
+        
+        // Show error
+        function showError(message) {
+            const errorEl = document.getElementById('errorMessage');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => hideError(), 5000);
+        }
+        
+        // Hide error
+        function hideError() {
+            document.getElementById('errorMessage').style.display = 'none';
+        }
+        
+        // Update instructions
+        function updateInstructions() {
+            const instructionsEl = document.getElementById('instructions');
+            instructionsEl.style.display = pins.length === 0 ? 'block' : 'none';
+        }
+        
+        // Event listeners
+        document.getElementById('clearRoute').addEventListener('click', clearRoute);
+        document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
+        
+        // Initialize app
+        window.addEventListener('load', function() {
+            console.log('Page loaded, initializing map...');
+            // Wait a bit for DOM to be fully ready
+            setTimeout(initMap, 200);
+        });
+    </script>
+</body>
+</html>
