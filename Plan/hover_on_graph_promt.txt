@@ -1,0 +1,36 @@
+# Prompt for LLM: Add Reverse Hover Functionality to Route Planner
+
+## Context
+You have the HTML code for a web-based route planner application. This app allows users to click on a map to define a route, displays the route on the map, and shows an elevation profile chart. Currently, the app supports hovering over the **elevation chart** to display a yellow circle on the **map**, highlighting the corresponding location on the route.
+
+## Requested Functionality
+Implement the **reverse** of the existing hover functionality:
+1.  **Trigger**: When the user hovers their mouse over the **route line (polyline)** on the **map**.
+2.  **Action**: Display a vertical line or highlight on the **elevation chart** to indicate the corresponding distance/position.
+3.  **Visual Indicator**: Show the **yellow circle (`highlightMarker`)** on the **map** at the hovered point, just like in the original forward hover.
+
+## Technical Details & Guidance
+-   **Existing Forward Hover Logic**: The elevation chart uses Chart.js's `onHover` callback to find the closest data point index. It then uses `state.currentElevation.coordinates[index]` to get the lat/lng and display the `highlightMarker` on the map.
+-   **Reverse Hover Implementation**:
+    1.  **Map Hover Event**: Attach a `mousemove` event listener to the map itself.
+    2.  **Polyline Proximity**: Inside the event handler, determine if the mouse cursor is close to any point on the existing route polylines. You can use `L.GeometryUtil.closestLayerSnap` (from Leaflet.GeometryUtil, if available) or iterate through route coordinates and calculate the distance from the mouse cursor to each segment/point. A small tolerance (e.g., 20-50 pixels) should be used.
+    3.  **Identify Data Point**: Once the closest point on the route is found, find its corresponding index in the `state.currentElevation.coordinates` array. This array is used to populate the elevation chart.
+    4.  **Update Chart**: Use Chart.js's API to programmatically highlight the data point at the identified index. The `datasetIndex` will be `0` (the first and only dataset).
+    5.  **Update Map**: Create or move the `state.highlightMarker` to the actual geographic location (lat/lng) of the hovered point on the route.
+    6.  **Mouse Leave**: Add a `mouseleave` event listener to the map or the route polylines to clear the highlight on the chart and the `highlightMarker` when the mouse moves away from the route.
+
+## Code Location & Integration
+-   **Event Listener**: Add the new event listeners (`mousemove`, `mouseleave`) within the `setupEventListeners` function or the `displayColoredRoute` function where the polylines are created.
+-   **Helper Function**: Create a new helper function (e.g., `handleMapHover`) to encapsulate the logic for determining proximity and updating the chart and marker.
+-   **Chart Interaction**: Use `chart.setActiveElements` and `chart.update()` to programmatically highlight the point on the elevation chart.
+
+## Implementation Steps Outline
+1.  **Attach Event Listeners**: Add `mousemove` and `mouseleave` listeners to the map or the route polylines.
+2.  **Proximity Check**: Implement the logic to find the closest point on the route to the mouse cursor.
+3.  **Index Mapping**: Map the found point on the route to its corresponding index in the `state.currentElevation.coordinates` array.
+4.  **Chart Highlight**: Use `state.elevationChart.setActiveElements([{ datasetIndex: 0, index: foundIndex }])` and `state.elevationChart.update()` to highlight the point.
+5.  **Marker Update**: Position `state.highlightMarker` at the lat/lng of the hovered point.
+6.  **Cleanup**: Ensure the chart highlight and map marker are removed on `mouseleave`.
+
+## Expected Behavior
+When a user moves their mouse along the route displayed on the map, the yellow circle should follow the cursor on the map, and a corresponding vertical line or highlight should appear on the elevation chart, indicating the elevation at that exact point along the route.
