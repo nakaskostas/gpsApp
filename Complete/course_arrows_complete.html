@@ -862,13 +862,13 @@
                     offset: '10%',
                     repeat: '400px',
                     symbol: L.Symbol.arrowHead({
-                        pixelSize: 7,
+                        pixelSize: 6,
                         polygon: false,
                         pathOptions: {
                             stroke: true,
                             weight: 1.5,
                             color: '#000000',
-                            opacity: 1
+                            opacity: 0.9
                         }
                     })
                 }]
@@ -965,6 +965,15 @@
                     }
                 }
             });
+
+            // EventListener για να καθαρίζει το marker όταν το ποντίκι φύγει από το graph
+const canvas = document.getElementById('elevationChart');
+canvas.addEventListener('mouseleave', () => {
+    if (state.highlightMarker) {
+        state.map.removeLayer(state.highlightMarker);
+        state.highlightMarker = null;
+    }
+});
         }
         
         // --- UTILITY & HELPER FUNCTIONS ---
