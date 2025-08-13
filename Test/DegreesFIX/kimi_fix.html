@@ -507,7 +507,6 @@
             state.routePolylines.forEach(p => state.map.removeLayer(p));
             state.routePolylines = [];
             state.routeArrows.forEach(a => state.map.removeLayer(a));
-            state.routeArrows = [];
             if (state.polylineDecorator) {
                 state.map.removeLayer(state.polylineDecorator);
                 state.polylineDecorator = null;
@@ -880,7 +879,8 @@
                     if (elevationDiff > 0) elevationGain += elevationDiff;
                     else elevationLoss += Math.abs(elevationDiff);
 
-                    if (segmentDistance > 0) {  
+                    // FIX: Only consider steep uphill gradients (positive elevation difference)
+                    if (segmentDistance > 0 && elevationDiff > 0) {  
                         const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
                         if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) {
                              steepUphillDistance += segmentDistance;
@@ -950,7 +950,8 @@
                 const elevationDiff = endPoint[2] - startPoint[2];
                 let isSteep = false;
 
-                if (segmentDistance > 0) {
+                // FIX: Only mark as steep when elevation difference is positive (uphill)
+                if (segmentDistance > 0 && elevationDiff > 0) {
                     const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
                     if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
                 }
