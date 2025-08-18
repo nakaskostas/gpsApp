@@ -1,9 +1,9 @@
 1. Performance
 
--Lazy loading για το elevation chart
+✅-Lazy loading για το elevation chart
     Φόρτωσε το Chart.js μόνο όταν ο χρήστης ανοίξει το bottom panel (αν δεν το έχεις ήδη).
     
--Δείγματα από τα σημεία (sampling)
+✅-Δείγματα από τα σημεία (sampling)
     Για πολύ μεγάλες διαδρομές, μείωσε το πλήθος των σημείων στο elevation chart για να μην καθυστερεί το render.
 
 -Caching

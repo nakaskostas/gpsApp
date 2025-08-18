@@ -1,0 +1,90 @@
+# Product Requirements Document (PRD)
+# Steep-Uphill Highlighting Toggle
+# for Route Planner Web Application
+# Version 1.0 – 2025-08-18
+
+────────────────────────────────────────
+1.   Goal
+     Allow users to turn on/off the red highlighting of route segments whose gradient is steeper than 5°.
+
+────────────────────────────────────────
+2.   Scope
+     • Frontend only – no API or routing changes.  
+     • Affects only the visual representation of the already-calculated route.
+
+────────────────────────────────────────
+3.   User Story
+     As a cyclist planning a route,  
+     I want to decide whether to see the steep (>5°) uphill stretches highlighted in red,  
+     so that I can keep the map clean when I don’t need the gradient information.
+
+────────────────────────────────────────
+4.   Acceptance Criteria
+     AC-1  A new toggle switch labelled “Απότομη ανάβαση” appears inside the existing menuPanel, directly underneath the “Κυκλική Διαδρομή” toggle.  
+     AC-2  Default state = OFF. When OFF, the entire route is drawn in solid blue (with the existing arrow decoration).  
+     AC-3  When the toggle is turned ON, the route is re-painted so that segments with a gradient >5° uphill are shown in red (#EF4444); the rest remain blue.  
+     AC-4  Toggling does not trigger a new server request; it re-uses the already-fetched elevation data.  
+     AC-5  The toggle state is saved in the undo/redo history (same mechanism as the round-trip toggle).  
+     AC-6  The toggle state is encoded into the shareable URL hash.  
+     AC-7  Visual styling of the new toggle matches the existing “Κυκλική Διαδρομή” switch (Tailwind peer-switch pattern).
+
+────────────────────────────────────────
+5.   UI Details
+     5.1  Location in DOM  
+          Insert the new control immediately after the round-trip toggle block inside menuPanel.
+
+     5.2  Label & i18n  
+          Greek text: “Απότομη ανάβαση”  
+          English text (for code comments): “Steep Uphill”
+
+     5.3  Accessibility  
+          Same ARIA pattern as the existing toggle.
+
+────────────────────────────────────────
+6.   State Management
+     • Add boolean state.showSteepHighlight (default false).  
+     • Update saveState() / restoreState() to include this flag.  
+     • Update URL compression routine to append the flag (v1|lat,lng,…|isRoundTrip|showSteepHighlight).
+
+────────────────────────────────────────
+7.   Rendering Logic
+     • Modify displayColoredRoute():  
+       – If !state.showSteepHighlight → draw single blue polyline.  
+       – If state.showSteepHighlight → perform current segment-by-segment coloring logic (red for >5° uphill).
+
+────────────────────────────────────────
+8.   Event Handling
+     • New change listener on the toggle calls toggleSteepHighlight() which:  
+       1. Flips state.showSteepHighlight.  
+       2. Calls redrawFromState() (re-uses existing function to repaint).  
+       3. Calls saveState().
+
+────────────────────────────────────────
+9.   Performance / Edge Cases
+     • No additional network traffic.  
+     • Handle routes with <2 points (no change).  
+     • Ensure the highlight marker on the elevation chart continues to work regardless of toggle state.
+
+────────────────────────────────────────
+10.  Testing Checklist
+     ☐ Toggle appears in correct place with correct styling.  
+     ☐ Default OFF → route is all blue.  
+     ☐ Turn ON → steep parts become red (and OFF again → back to blue).  
+     ☐ Undo/redo preserves toggle state.  
+     ☐ Share link encodes/decodes toggle state correctly.  
+     ☐ No console errors or extra API calls when toggling.
+
+────────────────────────────────────────
+11.  File/Line References for Implementer
+     • menuPanel div (search for id="menuPanel").  
+     • displayColoredRoute() function.  
+     • saveState() / restoreState() and URL functions.  
+     • CONFIG object (add HISTORY_LIMIT comment if needed).
+
+────────────────────────────────────────
+
+Do not change anything else in the web app's functionality
+
+────────────────────────────────────────
+
+End of PRD

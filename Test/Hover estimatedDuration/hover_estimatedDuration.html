@@ -11,7 +11,7 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- LZ-String for URL compression (NEW) -->
+    <!-- LZ-String for URL compression -->
     <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
     
     <style>
@@ -142,6 +142,35 @@
         #bottomPanel.is-visible {
             transform: translateY(0);
         }
+
+        /* Tooltip styles for estimated duration */
+        .duration-tooltip {
+            position: absolute;
+            background: #1f2937;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            white-space: nowrap;
+            z-index: 10000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 300px;
+            word-wrap: break-word;
+            white-space: normal;
+        }
+        
+        .duration-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #1f2937 transparent transparent transparent;
+        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -152,9 +181,9 @@
     <div class="relative w-screen h-screen">
         <div id="map"></div>
         
-        <!-- Top Right Buttons Container (NEW LAYOUT) -->
+        <!-- Top Right Buttons Container -->
         <div class="absolute top-4 right-4 z-[2000] flex items-center space-x-2">
-            <!-- Undo Button (NEW) -->
+            <!-- Undo Button -->
             <button id="undoButton" class="action-button disabled:opacity-50 disabled:cursor-not-allowed" title="Αναίρεση" disabled>
                 <span class="text-xl leading-none">↶</span>
             </button>
@@ -216,10 +245,20 @@
                 </label>
             </div>
 
-            <!-- Share Button (NEW) -->
+            <!-- Steep Uphill Toggle (NEW as per PRD) -->
             <div class="mt-4 pt-4 border-t border-gray-200">
+                <label for="steepUphillToggle" class="flex items-center justify-between cursor-pointer">
+                    <span class="font-medium text-gray-800">Απότομη ανάβαση</span>
+                    <div class="relative">
+                        <input type="checkbox" id="steepUphillToggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-400 peer-checked:bg-blue-600"></div>
+                        <div class="absolute left-1 top-1 bg-white border-gray-300 border rounded-full h-4 w-4 transition-transform peer-checked:translate-x-full"></div>
+                    </div>
+                </label>
+            </div>
 
-                
+            <!-- Share Button -->
+            <div class="mt-4 pt-4 border-t border-gray-200">
                 <button id="shareButton" class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-md hover:bg-indigo-600 transition-colors shadow-sm disabled:bg-indigo-300 disabled:cursor-not-allowed" disabled>
                     <span class="text-xl">📋</span>
                     Κοινή χρήση
@@ -273,10 +312,10 @@
                     <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
                     <div id="totalDistance" class="font-bold text-2xl text-blue-600 mt-1">--</div>
                 </div>
-                <!-- Estimated Duration (NEW) -->
+                <!-- Estimated Duration -->
                 <div class="text-center p-3 bg-gray-50/70 rounded-lg">
                     <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Εκτιμώμενη Διάρκεια</div>
-                    <div id="estimatedDuration" class="font-bold text-2xl text-purple-600 mt-1">--</div>
+                    <div id="estimatedDuration" class="font-bold text-2xl text-purple-600 mt-1 cursor-help">--</div>
                 </div>
                 <div class="text-center p-3 bg-gray-50/70 rounded-lg">
                     <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Απόσταση Απότομης Ανάβασης (>5°)</div>
@@ -324,7 +363,8 @@
             DEFAULT_CENTER: [37.9838, 23.7275], // Athens, Greece
             DEFAULT_ZOOM: 13,
             STEEP_GRADIENT_THRESHOLD: 5, // degrees
-            HISTORY_LIMIT: 10 // NEW: Max undo actions  
+            HISTORY_LIMIT: 10, // Max undo actions 
+            avgFlatSpeed: 15 // average Flat Speed 
         };
         
         // --- GLOBAL STATE ---
@@ -342,10 +382,11 @@
             searchResultMarker: null,
             isRoundTrip: false,
             polylineDecorator: null,
-            // NEW: State for new features
+            // State for new features
             isChartJsLoaded: false,
             history: [],
             historyIndex: -1,
+            showSteepHighlight: false, // NEW: State for steep highlight toggle
         };
 
         // --- UI ELEMENTS ---
@@ -359,7 +400,7 @@
             initUIElements();
             setupEventListeners();
             
-            // NEW: Restore route from URL hash if present
+            // Restore route from URL hash if present
             if (!parseUrlAndRestore()) {
                 // If not restored, save the initial empty state for undo history
                 saveState();
@@ -405,14 +446,10 @@
         function setupEventListeners() {
             document.getElementById('clearRoute').addEventListener('click', () => clearRoute(true));
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
-            
-            // NEW: Undo button
             document.getElementById('undoButton').addEventListener('click', undo);
-            
-            // NEW: Share button
             document.getElementById('shareButton').addEventListener('click', copyShareLink);
 
-            // NEW: Debounced search functionality
+            // Debounced search functionality
             const debouncedSearch = debounce(searchLocation, 300);
             const searchInput = document.getElementById('search-input');
             searchInput.addEventListener('input', () => {
@@ -451,17 +488,71 @@
             hidePanelButton.addEventListener('click', hideBottomPanel);
             showPanelButton.addEventListener('click', showBottomPanel);
 
-            // Round trip toggle listener
+            // Toggles listeners
             document.getElementById('roundTripToggle').addEventListener('change', handleRoundTripToggle);
-            
+            document.getElementById('steepUphillToggle').addEventListener('change', handleSteepUphillToggle); // NEW
+
             window.addEventListener('resize', () => {
                 if (state.map) {
                     setTimeout(() => state.map.invalidateSize(), 100);
                 }
             });
+
+            // Tooltip for estimated duration
+            setupDurationTooltip();
+        }
+
+        function setupDurationTooltip() {
+            const estimatedDurationElement = document.getElementById('estimatedDuration');
+            let tooltip = null;
+
+            estimatedDurationElement.addEventListener('mouseenter', (e) => {
+                if (tooltip) {
+                    document.body.removeChild(tooltip);
+                }
+
+                tooltip = document.createElement('div');
+                tooltip.className = 'duration-tooltip';
+                tooltip.innerHTML = `
+                    <strong>Τρόπος Υπολογισμού:</strong><br>
+                    • Μέση ταχύτητα σε επίπεδο: ${CONFIG.avgFlatSpeed || 15} km/h<br>
+                    • Πρόσθετος χρόνος για ανάβαση: 1 λεπτό ανά 10 μέτρα υψομετρικής διαφοράς
+                `;
+                
+                document.body.appendChild(tooltip);
+                
+                const rect = estimatedDurationElement.getBoundingClientRect();
+                tooltip.style.left = rect.left + window.scrollX + 'px';
+                tooltip.style.top = rect.top + window.scrollY - tooltip.offsetHeight - 10 + 'px';
+                
+                setTimeout(() => {
+                    tooltip.style.opacity = '1';
+                }, 10);
+            });
+
+            estimatedDurationElement.addEventListener('mouseleave', () => {
+                if (tooltip) {
+                    tooltip.style.opacity = '0';
+                    setTimeout(() => {
+                        if (tooltip && tooltip.parentNode) {
+                            document.body.removeChild(tooltip);
+                            tooltip = null;
+                        }
+                    }, 200);
+                }
+            });
+
+            // Update tooltip position on window resize
+            window.addEventListener('resize', () => {
+                if (tooltip && tooltip.parentNode) {
+                    const rect = estimatedDurationElement.getBoundingClientRect();
+                    tooltip.style.left = rect.left + window.scrollX + 'px';
+                    tooltip.style.top = rect.top + window.scrollY - tooltip.offsetHeight - 10 + 'px';
+                }
+            });
         }
         
-        // --- UNDO/HISTORY MANAGEMENT (NEW) ---
+        // --- UNDO/HISTORY MANAGEMENT ---
         function saveState() {
             // If we've undone actions, new action overwrites "future" history
             if (state.historyIndex < state.history.length - 1) {
@@ -470,7 +561,8 @@
 
             const snapshot = {
                 pins: state.pins.map(p => ({ lat: p.lat, lng: p.lng })), // Store as plain objects
-                isRoundTrip: state.isRoundTrip
+                isRoundTrip: state.isRoundTrip,
+                showSteepHighlight: state.showSteepHighlight // NEW
             };
             state.history.push(snapshot);
             state.historyIndex++;
@@ -494,7 +586,10 @@
         function restoreState(snapshot) {
             state.pins = snapshot.pins.map(p => L.latLng(p.lat, p.lng));
             state.isRoundTrip = snapshot.isRoundTrip;
+            state.showSteepHighlight = snapshot.showSteepHighlight ?? false; // NEW (with fallback)
+            
             document.getElementById('roundTripToggle').checked = state.isRoundTrip;
+            document.getElementById('steepUphillToggle').checked = state.showSteepHighlight; // NEW
             
             redrawFromState();
             updateUndoButton();
@@ -528,12 +623,13 @@
             updateUIState();
         }
         
-        // --- SHARE & URL FUNCTIONALITY (NEW) ---
+        // --- SHARE & URL FUNCTIONALITY ---
         function generateShareLink() {
             if (state.pins.length === 0) return null;
 
             const pinString = state.pins.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
-            const dataString = `v1|${pinString}|${state.isRoundTrip}`;
+            // NEW: Added showSteepHighlight to the URL data
+            const dataString = `v1|${pinString}|${state.isRoundTrip}|${state.showSteepHighlight}`;
             const compressed = LZString.compressToEncodedURIComponent(dataString);
 
             const baseUrl = window.location.href.split('#')[0];
@@ -569,15 +665,22 @@
                 const parts = decompressed.split('|');
                 parts.shift(); // remove "v1"
 
+                // NEW: Parse all flags from the end of the array
+                const showSteepHighlight = parts.pop() === 'true';
                 const isRoundTrip = parts.pop() === 'true';
+
                 const pins = parts.map(p => {
                     const coords = p.split(',');
                     return L.latLng(parseFloat(coords[0]), parseFloat(coords[1]));
                 });
 
                 if (pins.length > 0) {
-                    const snapshot = { pins: pins.map(p => ({lat: p.lat, lng: p.lng})), isRoundTrip };
-                    state.history = [snapshot];
+                    const snapshot = { 
+                        pins: pins.map(p => ({lat: p.lat, lng: p.lng})), 
+                        isRoundTrip,
+                        showSteepHighlight // NEW
+                    };
+                    state.history = [snapshot]; // Set initial history state
                     state.historyIndex = 0;
                     restoreState(snapshot);
                     console.log('Route restored from URL.');
@@ -604,7 +707,7 @@
             if (state.pins.length >= 2) {
                 calculateRoute();
             }
-            saveState(); // NEW: Save history
+            saveState();
             updateUIState();
         }
         
@@ -634,15 +737,11 @@
                 draggable: true
             }).addTo(state.map);
             
-            marker.on('dragstart', () => {
-                // Optional: Could save state on drag start for more granular undo
-            });
-            
             marker.on('dragend', (e) => {
                 const index = state.markers.indexOf(marker);
                 state.pins[index] = e.target.getLatLng();
                 if (state.pins.length >= 2) calculateRoute();
-                saveState(); // NEW: Save history after drag
+                saveState();
             });
             
             state.markers.push(marker);
@@ -664,7 +763,7 @@
             } else {
                 clearRoute(false);
             }
-            saveState(); // NEW: Save history
+            saveState();
             updateUIState();
         }
 
@@ -685,7 +784,17 @@
             } else if (!state.isRoundTrip) {
                 clearRoute(false);
             }
-            saveState(); // NEW: Save history
+            saveState();
+        }
+
+        // NEW: Handler for the steep uphill toggle
+        function handleSteepUphillToggle(e) {
+            state.showSteepHighlight = e.target.checked;
+            if (state.currentRoute) {
+                // Just redraw the route polyline with the new setting, no API call
+                displayColoredRoute(state.currentRoute.coordinates);
+            }
+            saveState(); // Save the new state to history
         }
         
         // --- LOCATION SEARCH ---
@@ -775,7 +884,7 @@
         async function fetchFromORS(pins) {
             console.log("Attempting to fetch route from OpenRouteService...");
             const coordinates = pins.map(pin => [pin.lng, pin.lat]);
-            const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+            const response = await fetch('https://api.openrouteservice.org/v2/directions/cycling-regular/geojson', {
                 method: 'POST',
                 headers: {
                     'Authorization': CONFIG.OPENROUTE_API_KEY,
@@ -803,7 +912,7 @@
         async function fetchFromGraphHopper(pins) {
             console.log("Attempting to fetch route from GraphHopper...");
             const points = pins.map(pin => `point=${pin.lat},${pin.lng}`).join('&');
-            const url = `https://graphhopper.com/api/1/route?${points}&vehicle=car&calc_points=true&points_encoded=false&type=json&key=${CONFIG.GRAPHHOPPER_KEY}`;
+            const url = `https://graphhopper.com/api/1/route?${points}&vehicle=bike&calc_points=true&points_encoded=false&type=json&key=${CONFIG.GRAPHHOPPER_KEY}`;
             
             const response = await fetch(url);
             if (!response.ok) throw new Error(`GraphHopper API error: ${response.status}`);
@@ -890,7 +999,6 @@
                 elevationProfileData.push({ distance: cumulativeDistance, elevation: elevation });
             });
 
-            // Sampling for large routes is already implemented here
             const maxChartPoints = 300;
             let sampledElevationData = elevationProfileData;
             let sampledRouteCoords = routeCoordinates;
@@ -928,59 +1036,72 @@
             }
         }
 
+        // MODIFIED: This function now handles conditional route coloring
         function displayColoredRoute(routeCoordinates) {
+            // Clear existing route layers
             state.routePolylines.forEach(p => state.map.removeLayer(p));
             state.routeArrows.forEach(a => state.map.removeLayer(a));
             state.routePolylines = [];
             state.routeArrows = [];
-
             if (state.polylineDecorator) {
                 state.map.removeLayer(state.polylineDecorator);
                 state.polylineDecorator = null;
             }
 
-            let currentSegment = [];
-            let isCurrentSegmentSteep = false;
-            let allSegments = [];
+            // Conditional rendering based on the toggle state
+            if (state.showSteepHighlight) {
+                // Logic for segment-by-segment coloring (red for steep, blue for normal)
+                let currentSegment = [];
+                let isCurrentSegmentSteep = false;
+                let allSegments = [];
 
-            for (let i = 1; i < routeCoordinates.length; i++) {
-                const startPoint = routeCoordinates[i - 1];
-                const endPoint = routeCoordinates[i];
-                const segmentDistance = calculateHaversineDistance(startPoint, endPoint);
-                const elevationDiff = endPoint[2] - startPoint[2];
-                let isSteep = false;
+                for (let i = 1; i < routeCoordinates.length; i++) {
+                    const startPoint = routeCoordinates[i - 1];
+                    const endPoint = routeCoordinates[i];
+                    const segmentDistance = calculateHaversineDistance(startPoint, endPoint);
+                    const elevationDiff = endPoint[2] - startPoint[2];
+                    let isSteep = false;
 
-                if (segmentDistance > 0) {
-                    const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
-                    if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
+                    if (segmentDistance > 0) {
+                        const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
+                        if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
+                    }
+
+                    if (i === 1) {
+                        currentSegment.push([startPoint[0], startPoint[1]]);
+                        isCurrentSegmentSteep = isSteep;
+                    }
+
+                    if (isSteep !== isCurrentSegmentSteep) {
+                        currentSegment.push([endPoint[0], endPoint[1]]);
+                        allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
+                        currentSegment = [[endPoint[0], endPoint[1]]];
+                        isCurrentSegmentSteep = isSteep;
+                    } else {
+                        currentSegment.push([endPoint[0], endPoint[1]]);
+                    }
                 }
 
-                if (i === 1) {
-                    currentSegment.push([startPoint[0], startPoint[1]]);
-                    isCurrentSegmentSteep = isSteep;
-                }
-
-                if (isSteep !== isCurrentSegmentSteep) {
-                    currentSegment.push([endPoint[0], endPoint[1]]);
+                if (currentSegment.length > 1) {
                     allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
-                    currentSegment = [[endPoint[0], endPoint[1]]];
-                    isCurrentSegmentSteep = isSteep;
-                } else {
-                    currentSegment.push([endPoint[0], endPoint[1]]);
                 }
-            }
 
-            if (currentSegment.length > 1) {
-                allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
-            }
-
-            allSegments.forEach(segment => {
-                const polyline = L.polyline(segment.coords, {
-                    color: segment.isSteep ? '#EF4444' : '#3B82F6', weight: 5, opacity: 0.85
+                allSegments.forEach(segment => {
+                    const polyline = L.polyline(segment.coords, {
+                        color: segment.isSteep ? '#EF4444' : '#3B82F6', weight: 5, opacity: 0.85
+                    }).addTo(state.map);
+                    state.routePolylines.push(polyline);
+                });
+            } else {
+                // Logic for drawing a single, solid blue line
+                const fullRouteCoords = routeCoordinates.map(c => [c[0], c[1]]);
+                const polyline = L.polyline(fullRouteCoords, {
+                    color: '#3B82F6', weight: 5, opacity: 0.85
                 }).addTo(state.map);
                 state.routePolylines.push(polyline);
-            });
+            }
 
+            // This part runs for both cases to add the direction arrows
             const fullPolyline = L.polyline(routeCoordinates.map(c => [c[0], c[1]]), { color: 'transparent' }).addTo(state.map);
             state.routePolylines.push(fullPolyline);
 
@@ -992,6 +1113,7 @@
             }).addTo(state.map);
             state.routeArrows.push(state.polylineDecorator);
 
+            // This part fits the map view to the route
             const group = new L.featureGroup([...state.routePolylines, ...state.markers]);
             state.map.fitBounds(group.getBounds(), { padding: [60, 60] });
         }
@@ -1004,11 +1126,9 @@
             document.getElementById('elevationGain').textContent = `+${Math.round(data.elevationGain)} m`;
             document.getElementById('elevationLoss').textContent = `-${Math.round(data.elevationLoss)} m`;
             
-            // NEW: Calculate and display duration
             calculateAndDisplayDuration(data.distance, data.elevationGain);
         }
         
-        // NEW: Lazy loads Chart.js and displays chart
         async function displayElevationChart(elevationData) {
             try {
                 await loadChartJs();
@@ -1074,14 +1194,14 @@
             });
 
             function smoothElevation(data, windowSize = 5) {
-    return data.map((_, i, arr) => {
-        const start = Math.max(0, i - Math.floor(windowSize / 2));
-        const end = Math.min(arr.length, i + Math.floor(windowSize / 2) + 1);
-        const slice = arr.slice(start, end);
-        const avgElevation = slice.reduce((sum, d) => sum + d.elevation, 0) / slice.length;
-        return { ...arr[i], elevation: avgElevation };
-    });
-}
+                return data.map((_, i, arr) => {
+                    const start = Math.max(0, i - Math.floor(windowSize / 2));
+                    const end = Math.min(arr.length, i + Math.floor(windowSize / 2) + 1);
+                    const slice = arr.slice(start, end);
+                    const avgElevation = slice.reduce((sum, d) => sum + d.elevation, 0) / slice.length;
+                    return { ...arr[i], elevation: avgElevation };
+                });
+            }
 
             document.getElementById('elevationChart').addEventListener('mouseleave', () => {
                 if (state.highlightMarker) {
@@ -1097,10 +1217,13 @@
                 state.markers.forEach(marker => state.map.removeLayer(marker));
                 state.markers = [];
                 state.pins = [];
+                // Reset toggles to default
                 document.getElementById('roundTripToggle').checked = false;
                 state.isRoundTrip = false;
+                document.getElementById('steepUphillToggle').checked = false; // NEW
+                state.showSteepHighlight = false; // NEW
                 
-                // NEW: Reset history on full clear
+                // Reset history on full clear
                 state.history = [];
                 state.historyIndex = -1;
                 saveState();
@@ -1185,31 +1308,37 @@
             return R * c;
         }
         
-        // NEW: Calculate and display estimated duration
        function calculateAndDisplayDuration(distance, elevationGain) {
-    if (distance === 0) {
-        document.getElementById('estimatedDuration').textContent = '--';
-        return;
-    }
+            if (distance === 0) {
+                document.getElementById('estimatedDuration').textContent = '--';
+                return;
+            }
 
-    // Ρεαλιστική μέση ταχύτητα ποδηλάτου: 18-25 km/h (ανάλογα με το έδαφος)
-    const avgFlatSpeed = 22; // km/h
-    // Χρόνος ανάβασης: ~1 min ανά 10 μέτρα υψομετρικής (πιο ρεαλιστικό για ποδήλατο)
-    const elevationPenaltyMinutes = (elevationGain / 10) * 1;
+            const avgFlatSpeed = CONFIG.avgFlatSpeed || 15; // km/h
+            const elevationPenaltyMinutes = (elevationGain / 10) * 1;
 
-    const flatTimeMinutes = (distance / 1000) / avgFlatSpeed * 60;
-    const totalMinutes = Math.round(flatTimeMinutes + elevationPenaltyMinutes);
+            const flatTimeMinutes = (distance / 1000) / avgFlatSpeed * 60;
+            const totalMinutes = Math.round(flatTimeMinutes + elevationPenaltyMinutes);
 
-    if (totalMinutes < 60) {
-        document.getElementById('estimatedDuration').textContent = `${totalMinutes} min`;
-    } else {
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        document.getElementById('estimatedDuration').textContent = `${hours}h ${minutes}m`;
-    }
-}
+            if (totalMinutes < 60) {
+                document.getElementById('estimatedDuration').textContent = `${totalMinutes} min`;
+            } else {
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                document.getElementById('estimatedDuration').textContent = `${hours}h ${minutes}m`;
+            }
+
+            // Update tooltip content if it exists
+            const tooltip = document.querySelector('.duration-tooltip');
+            if (tooltip) {
+                tooltip.innerHTML = `
+                    <strong>Τρόπος Υπολογισμού:</strong><br>
+                    • Μέση ταχύτητα σε επίπεδο: ${avgFlatSpeed} km/h<br>
+                    • Πρόσθετος χρόνος για ανάβαση: 1 λεπτό ανά 10 μέτρα υψομετρικής διαφοράς
+                `;
+            }
+        }
         
-        // NEW: Debounce utility
         function debounce(func, delay) {
             let timeout;
             const debounced = function(...args) {
@@ -1221,7 +1350,6 @@
             return debounced;
         }
 
-        // NEW: Lazy load Chart.js library
         function loadChartJs() {
             return new Promise((resolve, reject) => {
                 if (state.isChartJsLoaded) {
@@ -1247,7 +1375,6 @@
             document.getElementById('topRightLoader').classList.toggle('hidden', !show);
         }
         
-        // NEW: Unified message function
         function showMessage(message, type = 'error') {
             const el = document.getElementById('messageOverlay');
             document.getElementById('messageText').textContent = message;
@@ -1264,7 +1391,6 @@
             setTimeout(() => el.classList.add('message-fade'), 4500);
         }
         
-        // NEW: Central function to update UI element states
         function updateUIState() {
             const hasPins = state.pins.length > 0;
             const hasRoute = state.pins.length >= 2;
