@@ -1,0 +1,79 @@
+PRD – Add “Drag-to-Reroute” (Komoot-Style) to Route Planner Web App
+
+1. Goal
+Allow users to click on any point along an existing route and drag that point to a new location on the map.
+- No extra pin is created.
+- The route is automatically recalculated to pass through the dragged point and then continue to the next original pin.
+- Visual feedback is identical to Komoot (highlighted waypoint, ghost line while dragging, instant re-routing on drop).
+
+2. Scope
+In Scope:
+- Select & drag any segment of the route polyline
+- Real-time route preview during drag
+- Snap to road/path when dropped
+- Undo/redo support (uses existing history stack)
+
+Out of Scope:
+- Changing the order or deleting existing pins
+- Editing the route via keyboard or text input
+- Editing waypoints when “round-trip” is enabled (still allowed, just re-calculate as usual)
+
+3. User Flow
+1. Hover over the route polyline → cursor changes to grab.
+2. Click → a temporary “ghost” waypoint (circle marker) is pinned at cursor position.
+3. Drag → a dashed ghost line stretches from the previous pin to the ghost waypoint.
+4. Drop → the ghost waypoint becomes a routing constraint; the original route segment is replaced by a new one that passes through the dropped point.
+5. Auto-re-calculate the entire route as if the dropped point were a normal pin (but it is NOT added to the state.pins array).
+6. Undo → works exactly like removing a pin (uses existing history).
+
+4. Technical Requirements
+4.1 Data Model
+- Introduce a new array state.routeViaPoints = []
+- Each item: {latlng, insertAfterIndex}
+- These are temporary routing constraints only; not shown in pin list.
+
+4.2 Map Interaction
+- Use L.polyline event mousedown to detect clicks on the route.
+- Use mousemove & mouseup on the map container for drag-and-drop.
+- Snap to nearest road/vertex via existing routing APIs (ORS/GraphHopper).
+
+4.3 Visuals
+- Ghost waypoint: L.circleMarker (#F59E0B, radius 8) while dragging.
+- Ghost line: L.polyline with {dashArray: '5, 10', color: '#3B82F6'}.
+
+4.4 Recalculation Logic
+pseudo:
+let newRouteCoords = [
+  ...originalCoords.slice(0, insertAfterIndex + 1),
+  droppedPoint,
+  ...originalCoords.slice(insertAfterIndex + 1)
+];
+await calculateRoute(newRouteCoords); // existing function
+
+4.5 Undo / History
+- Before recalculation: push current state.routeViaPoints & state.pins to history.
+- Undoing restores previous via points and re-runs calculation.
+
+5. API & Performance
+- Same routing endpoints (ORS, GraphHopper) used; no extra cost model change.
+- Debounce recalculation on drop (reuse existing debounce util).
+- Maximum 3 via points allowed at once (configurable constant).
+
+7. Edge Cases
+Dragging outside map bounds → Cancel drag, revert route.
+Dropping on existing pin → Merge: treat drop point as the pin’s exact latlng.
+User undos mid-drag → Cancel drag + revert to last history state.
+Round-trip mode → Via point is inserted between last real pin and the closing “return” segment.
+
+8. Acceptance Criteria
+[ ] Hovering route shows grab cursor.
+[ ] Click-and-drag creates ghost waypoint & line.
+[ ] Dropping recalculates route within 1 s for ≤50 km routes.
+[ ] Undo/Redo correctly restores all previous route states.
+[ ] No additional pins appear in pin list or count towards MAX_PINS.
+[ ] GPX export includes the updated path.
+[ ] Works on desktop & mobile (touch drag).
+
+9. Open Questions / Future
+- Allow saving via points as permanent pins (future toggle).
+- Multi-segment drag (drag entire segment, not just one point).
