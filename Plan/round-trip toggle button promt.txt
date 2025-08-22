@@ -1,7 +1,6 @@
 Product Requirements Document (PRD) – Διορθωμένο & Οριστικό
 Project: Σχεδιαστής Διαδρομής (Route Planner) – Ενίσχυση λειτουργίας “Round Trip”
-Version: 2.0
-Date: 2025-08-12
+Version: 1.0
 Prepared for: LLM-Code Implementation
 ────────────────────────────────────────
 
@@ -66,6 +65,7 @@ Prepared for: LLM-Code Implementation
 • Το round-trip pin είναι ορατό και διακριτό.
 • Το δεξί κλικ στο round-trip pin μόνο απενεργοποιεί την λειτουργία.
 • Το αρχικό pin παραμένει ανέπαφο.
+• Το αρχικό pin και το round-trip pin να μην ειναι ποτέ το ένα πάνω στο άλλο
 
 ────────────────────────────────────────
-End of PRD v2.0
+End of PRD 

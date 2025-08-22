@@ -237,6 +237,36 @@
             white-space: normal; /* Allow wrapping */
         }
 
+        /* Drag route styles - IMPROVED FOR BETTER UX */
+        .route-draggable {
+            cursor: grab;
+            stroke-width: 15px; /* Increased clickable area */
+            stroke-opacity: 0; /* Make it transparent but wide */
+            stroke: transparent;
+        }
+        .route-draggable:active {
+            cursor: grabbing;
+        }
+        .ghost-waypoint {
+            background: #F59E0B;
+            border: 3px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+        }
+        
+        /* Visible route line */
+        .route-line {
+            pointer-events: none; /* Allow clicks to pass through to draggable layer */
+        }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -428,6 +458,7 @@
             ELEVATION_API_URL: 'https://api.open-elevation.com/api/v1/lookup',
             GRAPHHOPPER_KEY: 'bf786448-12b8-4aea-8549-b3cc120e9f8c',
             MAX_PINS: 10, // Number of Pins
+            MAX_VIA_POINTS: 3, // Max drag route via points
             DEFAULT_CENTER: [37.9838, 23.7275], // Athens, Greece
             DEFAULT_ZOOM: 13,
             STEEP_GRADIENT_THRESHOLD: 5, // degrees
@@ -458,11 +489,20 @@
             searchSuggestions: [],
             highlightedSuggestionIndex: -1,
             isSearchLoading: false,
+            // Drag route state
+            routeViaPoints: [],
+            ghostWaypoint: null,
+            ghostLine: null,
+            isDragging: false,
+            dragInsertIndex: -1,
+            dragOriginalRoute: null,
+            draggingPolyline: null,
+            dragStartLatLng: null,
+            dragSegmentIndex: -1
         };
 
         // --- UI ELEMENTS & SHARED VARIABLES ---
         let bottomPanel, hidePanelButton, showPanelButton;
-        let activeSearchTooltip = null; // NEW: Variable to hold the active search result tooltip
 
         // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', initApp);
@@ -557,7 +597,6 @@
                 }
             });
 
-
             // Menu toggle functionality
             const menuToggle = document.getElementById('menuToggle');
             const menuPanel = document.getElementById('menuPanel');
@@ -584,6 +623,10 @@
             // Toggles listeners
             document.getElementById('roundTripToggle').addEventListener('change', handleRoundTripToggle);
             document.getElementById('steepUphillToggle').addEventListener('change', handleSteepUphillToggle);
+
+            // Drag route listeners
+            state.map.on('mousemove', handleDragMove);
+            state.map.on('mouseup', handleDragEnd);
 
             window.addEventListener('resize', () => {
                 if (state.map) {
@@ -665,6 +708,7 @@
 
             const snapshot = {
                 pins: state.pins.map(p => ({ lat: p.lat, lng: p.lng })),
+                routeViaPoints: state.routeViaPoints.map(v => ({ latlng: { lat: v.latlng.lat, lng: v.latlng.lng }, insertAfterIndex: v.insertAfterIndex })),
                 isRoundTrip: state.isRoundTrip,
                 showSteepHighlight: state.showSteepHighlight
             };
@@ -688,6 +732,7 @@
         
         function restoreState(snapshot) {
             state.pins = snapshot.pins.map(p => L.latLng(p.lat, p.lng));
+            state.routeViaPoints = snapshot.routeViaPoints.map(v => ({ latlng: L.latLng(v.latlng.lat, v.latlng.lng), insertAfterIndex: v.insertAfterIndex }));
             state.isRoundTrip = snapshot.isRoundTrip;
             state.showSteepHighlight = snapshot.showSteepHighlight ?? false;
             
@@ -714,12 +759,7 @@
                 addMarker(pin, index + 1);
             });
             
-            if (state.pins.length >= 2) {
-                calculateRoute();
-            } else {
-                clearRoute(false);
-            }
-            
+            calculateRoute();
             updateUIState();
         }
         
@@ -728,7 +768,8 @@
             if (state.pins.length === 0) return null;
 
             const pinString = state.pins.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
-            const dataString = `v1|${pinString}|${state.isRoundTrip}|${state.showSteepHighlight}`;
+            const viaString = state.routeViaPoints.map(v => `${v.latlng.lat.toFixed(5)},${v.latlng.lng.toFixed(5)},${v.insertAfterIndex}`).join('|');
+            const dataString = `v1|${pinString}|${viaString}|${state.isRoundTrip}|${state.showSteepHighlight}`;
             const compressed = LZString.compressToEncodedURIComponent(dataString);
 
             const baseUrl = window.location.href.split('#')[0];
@@ -767,7 +808,15 @@
                 const showSteepHighlight = parts.pop() === 'true';
                 const isRoundTrip = parts.pop() === 'true';
 
-                const pins = parts.map(p => {
+                const viaString = parts.pop() || '';
+                const viaParts = viaString ? viaString.split('|') : [];
+                state.routeViaPoints = viaParts.map(v => {
+                    const coords = v.split(',');
+                    return { latlng: L.latLng(parseFloat(coords[0]), parseFloat(coords[1])), insertAfterIndex: parseInt(coords[2]) };
+                });
+
+                const pinString = parts.join('|');
+                const pins = pinString.split('|').map(p => {
                     const coords = p.split(',');
                     return L.latLng(parseFloat(coords[0]), parseFloat(coords[1]));
                 });
@@ -775,6 +824,7 @@
                 if (pins.length > 0) {
                     const snapshot = { 
                         pins: pins.map(p => ({lat: p.lat, lng: p.lng})), 
+                        routeViaPoints: state.routeViaPoints.map(v => ({ latlng: { lat: v.latlng.lat, lng: v.latlng.lng }, insertAfterIndex: v.insertAfterIndex })),
                         isRoundTrip,
                         showSteepHighlight
                     };
@@ -793,6 +843,7 @@
 
         // --- MAP INTERACTION ---
         function handleMapClick(e) {
+            if (state.isDragging) return;
             if (state.pins.length >= CONFIG.MAX_PINS) {
                 showMessage(`Επιτρέπονται μέχρι ${CONFIG.MAX_PINS} σημεία.`, 'error');
                 return;
@@ -802,14 +853,13 @@
             state.pins.push(latlng);
             addMarker(latlng, state.pins.length);
             
-            if (state.pins.length >= 2) {
-                calculateRoute();
-            }
+            calculateRoute();
             saveState();
             updateUIState();
         }
         
         function handleMapRightClick(e) {
+            if (state.isDragging) return;
             e.originalEvent.preventDefault();
             if (state.pins.length === 0) return;
 
@@ -838,7 +888,7 @@
             marker.on('dragend', (e) => {
                 const index = state.markers.indexOf(marker);
                 state.pins[index] = e.target.getLatLng();
-                if (state.pins.length >= 2) calculateRoute();
+                calculateRoute();
                 saveState();
             });
             
@@ -856,11 +906,13 @@
                 marker.setIcon(createNumberedIcon(i + 1, i === 0));
             });
             
-            if (state.pins.length >= 2) {
-                calculateRoute();
-            } else {
-                clearRoute(false);
-            }
+            // Remove any via points that reference this pin
+            state.routeViaPoints = state.routeViaPoints.filter(v => v.insertAfterIndex !== index);
+            state.routeViaPoints.forEach(v => {
+                if (v.insertAfterIndex > index) v.insertAfterIndex--;
+            });
+
+            calculateRoute();
             saveState();
             updateUIState();
         }
@@ -877,11 +929,7 @@
 
         function handleRoundTripToggle(e) {
             state.isRoundTrip = e.target.checked;
-            if (state.pins.length >= 2) {
-                calculateRoute();
-            } else if (!state.isRoundTrip) {
-                clearRoute(false);
-            }
+            calculateRoute();
             saveState();
         }
 
@@ -930,7 +978,6 @@
             }
         }
 
-        // MODIFIED: Added hover tooltips to search results
         function renderSuggestions(suggestions) {
             const suggestionsList = document.getElementById('search-suggestions');
             suggestionsList.innerHTML = '';
@@ -947,7 +994,6 @@
                 li.dataset.index = index;
                 li.addEventListener('click', () => selectSuggestion(item));
                 
-                // NEW: Add mouseenter and mouseleave events for the tooltip
                 li.addEventListener('mouseenter', (e) => {
                     if (activeSearchTooltip) activeSearchTooltip.remove();
 
@@ -1045,7 +1091,7 @@
             });
         }
         
-        // MODIFIED: Cleans up the tooltip when suggestions are cleared
+        let activeSearchTooltip = null;
         function clearSuggestions() {
             const suggestionsList = document.getElementById('search-suggestions');
             suggestionsList.innerHTML = '';
@@ -1067,12 +1113,7 @@
 
         // --- ROUTE & ELEVATION CALCULATION ---
         async function calculateRoute() {
-            let pinsForRoute = [...state.pins];
-            if (state.isRoundTrip && pinsForRoute.length >= 2) {
-                pinsForRoute.push(pinsForRoute[0]);
-            }
-
-            if (pinsForRoute.length < 2) {
+            if (state.pins.length < 2) {
                 clearRoute(false);
                 return;
             }
@@ -1081,7 +1122,7 @@
 
             try {
                 let routeData = null;
-                const apis = [() => fetchFromORS(pinsForRoute), () => fetchFromGraphHopper(pinsForRoute)];
+                const apis = [() => fetchFromORS(), () => fetchFromGraphHopper()];
 
                 for (const fetchFunc of apis) {
                     try {
@@ -1113,9 +1154,23 @@
             }
         }
 
-        async function fetchFromORS(pins) {
+        async function fetchFromORS() {
             console.log("Attempting to fetch route from OpenRouteService...");
-            const coordinates = pins.map(pin => [pin.lng, pin.lat]);
+            let pinsForRoute = [...state.pins];
+            if (state.isRoundTrip && pinsForRoute.length >= 2) {
+                pinsForRoute.push(pinsForRoute[0]);
+            }
+
+            // Build coordinates with via points
+            let coordinates = pinsForRoute.map(pin => [pin.lng, pin.lat]);
+            
+            // Insert via points
+            state.routeViaPoints.forEach(via => {
+                if (via.insertAfterIndex < coordinates.length - 1) {
+                    coordinates.splice(via.insertAfterIndex + 1, 0, [via.latlng.lng, via.latlng.lat]);
+                }
+            });
+
             const response = await fetch('https://api.openrouteservice.org/v2/directions/cycling-regular/geojson', {
                 method: 'POST',
                 headers: {
@@ -1141,10 +1196,24 @@
             };
         }
 
-        async function fetchFromGraphHopper(pins) {
+        async function fetchFromGraphHopper() {
             console.log("Attempting to fetch route from GraphHopper...");
-            const points = pins.map(pin => `point=${pin.lat},${pin.lng}`).join('&');
-            const url = `https://graphhopper.com/api/1/route?${points}&vehicle=bike&calc_points=true&points_encoded=false&type=json&key=${CONFIG.GRAPHHOPPER_KEY}`;
+            let pinsForRoute = [...state.pins];
+            if (state.isRoundTrip && pinsForRoute.length >= 2) {
+                pinsForRoute.push(pinsForRoute[0]);
+            }
+
+            // Build points with via points
+            let points = pinsForRoute.map(pin => `point=${pin.lat},${pin.lng}`);
+            
+            // Insert via points
+            state.routeViaPoints.forEach(via => {
+                if (via.insertAfterIndex < pinsForRoute.length - 1) {
+                    points.splice(via.insertAfterIndex + 1, 0, `point=${via.latlng.lat},${via.latlng.lng}`);
+                }
+            });
+
+            const url = `https://graphhopper.com/api/1/route?${points.join('&')}&vehicle=bike&calc_points=true&points_encoded=false&type=json&key=${CONFIG.GRAPHHOPPER_KEY}`;
             
             const response = await fetch(url);
             if (!response.ok) throw new Error(`GraphHopper API error: ${response.status}`);
@@ -1249,21 +1318,20 @@
 
             updateRouteStats({ distance: cumulativeDistance, elevationGain, elevationLoss, steepUphillDistance });
             displayColoredRoute(routeCoordinates);
-            displayElevationChart(sampledElevationData);
             updateStatsVisibility(true);
             showBottomPanel();
         }
         
         // --- UI UPDATES & DISPLAY ---
         function showBottomPanel() {
-            if (!state.currentRoute) return;
+            if (!state.currentRoute && state.pins.length < 2) return;
             bottomPanel.classList.add('is-visible');
             showPanelButton.classList.add('hidden');
         }
 
         function hideBottomPanel() {
             bottomPanel.classList.remove('is-visible');
-            if (state.currentRoute) {
+            if (state.currentRoute || state.pins.length >= 2) {
                 showPanelButton.classList.remove('hidden');
             }
         }
@@ -1273,10 +1341,26 @@
             state.routeArrows.forEach(a => state.map.removeLayer(a));
             state.routePolylines = [];
             state.routeArrows = [];
+
             if (state.polylineDecorator) {
                 state.map.removeLayer(state.polylineDecorator);
                 state.polylineDecorator = null;
             }
+            
+            if (state.draggingPolyline) {
+                state.map.removeLayer(state.draggingPolyline);
+                state.draggingPolyline = null;
+            }
+
+            // Create invisible wide draggable line for better UX
+            const invisibleLine = L.polyline(routeCoordinates.map(c => [c[0], c[1]]), {
+                color: 'transparent',
+                weight: 20, // Much wider for easier clicking
+                opacity: 0,
+                className: 'route-draggable'
+            }).addTo(state.map);
+            invisibleLine.on('mousedown', handleRouteMouseDown);
+            state.routePolylines.push(invisibleLine);
 
             if (state.showSteepHighlight) {
                 let currentSegment = [];
@@ -1316,14 +1400,20 @@
 
                 allSegments.forEach(segment => {
                     const polyline = L.polyline(segment.coords, {
-                        color: segment.isSteep ? '#EF4444' : '#3B82F6', weight: 5, opacity: 0.85
+                        color: segment.isSteep ? '#EF4444' : '#3B82F6', 
+                        weight: 5, 
+                        opacity: 0.85,
+                        className: 'route-line'
                     }).addTo(state.map);
                     state.routePolylines.push(polyline);
                 });
             } else {
                 const fullRouteCoords = routeCoordinates.map(c => [c[0], c[1]]);
                 const polyline = L.polyline(fullRouteCoords, {
-                    color: '#3B82F6', weight: 5, opacity: 0.85
+                    color: '#3B82F6', 
+                    weight: 5, 
+                    opacity: 0.85,
+                    className: 'route-line'
                 }).addTo(state.map);
                 state.routePolylines.push(polyline);
             }
@@ -1341,6 +1431,139 @@
 
             const group = new L.featureGroup([...state.routePolylines, ...state.markers]);
             state.map.fitBounds(group.getBounds(), { padding: [60, 60] });
+        }
+
+        // --- DRAG ROUTE FUNCTIONALITY - IMPROVED ---
+        function handleRouteMouseDown(e) {
+            if (state.pins.length < 2) return;
+            if (state.routeViaPoints.length >= CONFIG.MAX_VIA_POINTS) {
+                showMessage(`Μέγιστο ${CONFIG.MAX_VIA_POINTS} σημεία επαναδρομολόγησης.`, 'error');
+                return;
+            }
+
+            state.isDragging = true;
+            state.map.dragging.disable();
+            state.dragStartLatLng = e.latlng;
+
+            // Create ghost waypoint
+            if (state.ghostWaypoint) state.map.removeLayer(state.ghostWaypoint);
+            state.ghostWaypoint = L.circleMarker(e.latlng, {
+                radius: 8,
+                fillColor: "#F59E0B",
+                color: "#fff",
+                weight: 3,
+                opacity: 1,
+                fillOpacity: 0.8
+            }).addTo(state.map);
+
+            // Create ghost line
+            if (state.ghostLine) state.map.removeLayer(state.ghostLine);
+
+            // Find the segment index
+            const routeCoords = state.currentRoute ? state.currentRoute.coordinates : [];
+            if (routeCoords.length === 0) return;
+
+            let closestSegmentIndex = 0;
+            let minDistance = Infinity;
+
+            for (let i = 0; i < routeCoords.length - 1; i++) {
+                const dist = pointToSegmentDistance(
+                    e.latlng,
+                    L.latLng(routeCoords[i][0], routeCoords[i][1]),
+                    L.latLng(routeCoords[i + 1][0], routeCoords[i + 1][1])
+                );
+                if (dist < minDistance) {
+                    minDistance = dist;
+                    closestSegmentIndex = i;
+                }
+            }
+
+            // Determine which pin this segment belongs to
+            const segmentsPerPin = (routeCoords.length - 1) / (state.pins.length - 1);
+            state.dragSegmentIndex = Math.floor(closestSegmentIndex / segmentsPerPin);
+
+            e.originalEvent.preventDefault();
+        }
+
+        function handleDragMove(e) {
+            if (!state.isDragging || !state.ghostWaypoint) return;
+
+            const latlng = e.latlng;
+            state.ghostWaypoint.setLatLng(latlng);
+
+            // Update ghost line to show preview
+            if (!state.ghostLine) {
+                state.ghostLine = L.polyline([], {
+                    color: '#3B82F6',
+                    weight: 5,
+                    opacity: 0.7,
+                    dashArray: '5, 10'
+                }).addTo(state.map);
+            }
+
+            // Find the relevant pins
+            const segmentIndex = state.dragSegmentIndex;
+            const startPin = state.pins[segmentIndex];
+            const endPin = segmentIndex + 1 < state.pins.length 
+                ? state.pins[segmentIndex + 1] 
+                : (state.isRoundTrip ? state.pins[0] : null);
+
+            if (startPin && endPin) {
+                state.ghostLine.setLatLngs([
+                    [startPin.lat, startPin.lng],
+                    [latlng.lat, latlng.lng],
+                    [endPin.lat, endPin.lng]
+                ]);
+            }
+        }
+
+        function handleDragEnd(e) {
+            if (!state.isDragging) return;
+
+            state.isDragging = false;
+            state.map.dragging.enable();
+
+            const latlng = e.latlng;
+
+            // Clean up ghost elements
+            if (state.ghostWaypoint) {
+                state.map.removeLayer(state.ghostWaypoint);
+                state.ghostWaypoint = null;
+            }
+            if (state.ghostLine) {
+                state.map.removeLayer(state.ghostLine);
+                state.ghostLine = null;
+            }
+
+            // Add via point and recalculate route
+            if (state.routeViaPoints.length < CONFIG.MAX_VIA_POINTS) {
+                state.routeViaPoints.push({ 
+                    latlng: latlng, 
+                    insertAfterIndex: state.dragSegmentIndex 
+                });
+                
+                // Remove duplicates and sort
+                state.routeViaPoints = state.routeViaPoints.filter((via, index, self) => 
+                    index === self.findIndex(v => 
+                        v.insertAfterIndex === via.insertAfterIndex && 
+                        v.latlng.lat === via.latlng.lat && 
+                        v.latlng.lng === via.latlng.lng
+                    )
+                );
+                
+                calculateRoute();
+                saveState();
+            }
+
+            state.dragStartLatLng = null;
+        }
+
+        function pointToSegmentDistance(p, a, b) {
+            const ab = b.subtract(a);
+            const ap = p.subtract(a);
+            const t = Math.max(0, Math.min(1, L.LineUtil.dot(ap, ab) / L.LineUtil.dot(ab, ab)));
+            const projection = a.add(ab.multiplyBy(t));
+            return p.distanceTo(projection);
         }
 
         function updateRouteStats(data) {
@@ -1442,6 +1665,7 @@
                 state.markers.forEach(marker => state.map.removeLayer(marker));
                 state.markers = [];
                 state.pins = [];
+                state.routeViaPoints = [];
                 document.getElementById('roundTripToggle').checked = false;
                 state.isRoundTrip = false;
                 document.getElementById('steepUphillToggle').checked = false;
@@ -1462,12 +1686,22 @@
                 state.polylineDecorator = null;
             }
             
+            if (state.ghostWaypoint) {
+                state.map.removeLayer(state.ghostWaypoint);
+                state.ghostWaypoint = null;
+            }
+            if (state.ghostLine) {
+                state.map.removeLayer(state.ghostLine);
+                state.ghostLine = null;
+            }
+            
             if (state.elevationChart) {
                 state.elevationChart.destroy();
                 state.elevationChart = null;
             }
             if (state.highlightMarker) {
-                state.map.removeLayer(state.highlightMarker);
+                state.map.remove
+                                state.map.removeLayer(state.highlightMarker);
                 state.highlightMarker = null;
             }
             if (state.searchResultMarker) {
