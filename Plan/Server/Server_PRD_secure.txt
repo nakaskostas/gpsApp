@@ -1,0 +1,124 @@
+📄 Product Requirements Document (PRD) – Secure Server-Side Route Planner
+========================================================================
+Version: 2.0 (SQL-Injection-Hardened)
+Date: 2025-06-25
+
+1. Project Overview
+-------------------
+Transform the current pure client-side route-planner into a **secure, fast, server-side Node.js/Express application** that:
+1. **Hides all third-party API keys** (OpenRouteService, GraphHopper, open-elevation, Nominatim).
+2. **Prevents SQL Injection attacks** by using **parameterized queries / prepared statements** and **input validation**.
+3. **Persists optional user data** in a **MySQL** database via **phpMyAdmin**.
+4. **Maintains 100 % of existing functionality** (pins, routing, elevation, GPX, share links).
+
+2. Security Principles (MUST APPLY)
+-----------------------------------
+| Principle | Implementation Rule |
+|-----------|----------------------|
+| Parameterized Queries | Use **mysql2/promise** `.execute()` or ORM (Prisma/Sequelize) **only**; never string-concatenate user input. |
+| Input Validation | Validate **every** request body / query string with **express-validator** or **Joi**. |
+| Least Privilege DB User | Create a dedicated MySQL user with **SELECT, INSERT, UPDATE, DELETE** only on the target schema. |
+| ORM Usage | Prefer **Prisma**; fallback to **mysql2/promise** with placeholders. |
+| HTTPS & Headers | Use **helmet** and enforce **HTTPS** in production. |
+
+3. Tech Stack
+-------------
+Backend: Node.js 20 + Express 4  
+Database: MySQL 8 (managed via phpMyAdmin)  
+ORM/Query: mysql2/promise (prepared statements) or Prisma  
+Validation: express-validator  
+Auth: JWT (stateless)  
+Deployment: Docker-ready → Railway / Render / VPS
+
+4. Database Schema – phpMyAdmin
+-------------------------------
+4.1  SQL to create the database and dedicated user
+--------------------------------------------------
+-- Run once in phpMyAdmin as root
+CREATE DATABASE IF NOT EXISTS routeplanner CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'rp_app'@'localhost' IDENTIFIED BY 'StrongP@ssw0rd!';
+GRANT SELECT, INSERT, UPDATE, DELETE ON routeplanner.* TO 'rp_app'@'localhost';
+FLUSH PRIVILEGES;
+
+4.2  Table: users  (sql-injection-safe design)
+----------------------------------------------
+USE routeplanner;
+
+CREATE TABLE `users` (
+  `id`         INT AUTO_INCREMENT PRIMARY KEY,
+  `email`      VARCHAR(255) NOT NULL UNIQUE,
+  `password_hash` CHAR(60)   NOT NULL,               -- bcrypt hash
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+4.3  Table: saved_routes  (sql-injection-safe design)
+-----------------------------------------------------
+CREATE TABLE `saved_routes` (
+  `id`               INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id`          INT NOT NULL,
+  `name`             VARCHAR(100) NOT NULL,
+  `compressed_route` TEXT NOT NULL,                  -- LZ-string blob
+  `created_at`       DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT `fk_user`
+    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+5. Backend API Endpoints – v1 (Secure)
+--------------------------------------
+| Method | Path | Body / Query | Response | Security Notes |
+|---|---|---|---|---|
+| POST | /api/v1/route | {coordinates:[[lat,lng],…]} | {geojson,distance} | Parameterized ORM; rate-limit 60/min |
+| POST | /api/v1/elevation | {locations:[{lat,lng},…]} | {results:[{elevation}]} | Parameterized ORM; rate-limit 60/min |
+| GET  | /api/v1/search | q=Athens | [{name,lat,lon,display_name}] | Validate & escape q; 60/min |
+| POST | /api/v1/auth/register | {email,password} | {token} | express-validator email+password |
+| POST | /api/v1/auth/login    | {email,password} | {token} | express-validator + bcrypt compare |
+| GET  | /api/v1/routes        | Authorization: Bearer <jwt> | […] | JWT middleware |
+| POST | /api/v1/routes        | {name,compressed_route} + JWT | {id} | Validate name length < 100 |
+| DELETE | /api/v1/routes/:id  | JWT | 204 | Check ownership via JWT & parameterized DELETE |
+
+6. Environment Variables (.env – never commit)
+---------------------------------------------
+PORT=3000
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=rp_app
+DB_PASS=StrongP@ssw0rd!
+DB_NAME=routeplanner
+JWT_SECRET=AnotherStrongSecret
+OPENROUTE_API_KEY=***
+GRAPHHOPPER_KEY=***
+
+7. Node.js Example – Parameterized Query
+----------------------------------------
+```js
+import mysql from 'mysql2/promise';
+import { body, validationResult } from 'express-validator';
+
+const pool = mysql.createPool({
+  host:     process.env.DB_HOST,
+  user:     process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10
+});
+
+app.post('/api/v1/routes',
+  body('name').isLength({ min: 1, max: 100 }).trim().escape(),
+  body('compressed_route').isLength({ min: 1 }),
+  authenticateJWT,
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { name, compressed_route } = req.body;
+    const userId = req.user.id;        // from JWT
+    const [result] = await pool.execute(
+      'INSERT INTO saved_routes (user_id, name, compressed_route) VALUES (?, ?, ?)',
+      [userId, name, compressed_route]
+    );
+    res.json({ id: result.insertId });
+  }
+);
