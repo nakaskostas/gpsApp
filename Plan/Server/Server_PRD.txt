@@ -1,0 +1,118 @@
+📄 Product Requirements Document (PRD)  
+Server-Side Conversion of Local Route Planner Web App
+====================================================
+
+1. Project Overview
+-------------------
+Transform the pure client-side route-planner web application (HTML/JS/CSS, no build step) into a secure, fast, server-side application that:
+- hides all third-party API keys,
+- keeps 100 % of existing functionality,
+- adds minimal latency,
+- persists optional user data in a MySQL database (via phpMyAdmin).
+
+2. Scope – What Must Work
+-------------------------
+| Feature | Client Status | Server Status After Migration |
+|---------|---------------|-------------------------------|
+| Leaflet map display | ✅ | ✅ (unchanged) |
+| Click to add / right-click to remove route pins | ✅ | ✅ |
+| Route calculation (bike profile) | ✅ (direct ORS + GraphHopper) | ✅ (server proxies requests) |
+| Elevation lookup | ✅ (open-elevation) | ✅ (server proxies request) |
+| Location search (Nominatim) | ✅ (direct) | ✅ (server proxies request) |
+| Round-trip toggle | ✅ | ✅ |
+| Steep-gradient toggle | ✅ | ✅ |
+| Undo / redo history | ✅ (local) | ✅ (local) |
+| Share link (compressed route in URL) | ✅ | ✅ |
+| GPX export | ✅ | ✅ |
+| Optional user login / saved routes | ❌ | ✅ (new) |
+| Hide API keys | ❌ | ✅ |
+
+3. Tech Stack
+-------------
+| Layer | Technology |
+|-------|------------|
+| Backend | Node.js 20 + Express 4 (single service) |
+| DB | MySQL 8 (via phpMyAdmin) |
+| ORM | Prisma or Sequelize (choose one) |
+| Auth | Stateless JWT (optional) |
+| Deployment | Docker-ready → Railway / Render / VPS |
+| Front-end | No build step – keep as-is, change only API calls |
+
+4. Database Schema (phpMyAdmin)
+-------------------------------
+4.1 Table `users`
+- id: INT PK AUTO_INCREMENT
+- email: VARCHAR(255) UNIQUE
+- password_hash: CHAR(60) (bcrypt)
+- created_at: DATETIME DEFAULT NOW()
+
+4.2 Table `saved_routes`
+- id: INT PK AUTO_INCREMENT
+- user_id: INT FK → users.id ON DELETE CASCADE
+- name: VARCHAR(100) (user-supplied label)
+- compressed_route: TEXT (LZ-string of v1|lat1,lng1|…|isRound|steepToggle)
+- created_at: DATETIME DEFAULT NOW()
+
+5. Backend API Endpoints (v1)
+-----------------------------
+| Method | Path | Body / Query | Response | Notes |
+|---|---|---|---|---|
+| POST | /api/v1/route | {coordinates: [[lat,lng], …]} | {geojson, distance} | proxy ORS/GraphHopper |
+| POST | /api/v1/elevation | {locations: [{lat,lng}, …]} | {results:[{elevation}]} | proxy open-elevation |
+| GET | /api/v1/search | q=Athens | [{name, lat, lon, display_name}] | proxy Nominatim |
+| POST | /api/v1/auth/register | {email, password} | {token} | optional |
+| POST | /api/v1/auth/login | {email, password} | {token} | optional |
+| GET | /api/v1/routes | Authorization: Bearer <jwt> | [{id,name,compressed_route,…}] | user saved routes |
+| POST | /api/v1/routes | {name, compressed_route} + JWT | {id} | save route |
+| DELETE | /api/v1/routes/:id | JWT | 204 | delete route |
+
+6. Configuration & Security
+---------------------------
+Environment file .env (never committed):
+PORT=3000
+DB_URL=mysql://user:pass@localhost:3306/routeplanner
+JWT_SECRET=supersecret
+OPENROUTE_API_KEY=***
+GRAPHHOPPER_KEY=***
+
+- CORS: allow only frontend origin
+- Rate limiting: 60 req/min per IP (route & elevation)
+- Helmet for secure headers
+- HTTPS via Let’s Encrypt in production
+
+7. Front-End Changes
+--------------------
+1. Replace all direct API calls with /api/v1/…
+2. Delete all API keys from CONFIG object.
+3. Add optional login/register modals (vanilla JS, no framework).
+4. Store JWT in localStorage.
+
+8. Performance Targets
+----------------------
+- Route request ≤ 1.5 s p95 (Europe server)
+- Elevation request ≤ 800 ms p95
+- Cold start ≤ 3 s (Docker)
+
+9. Testing Checklist
+--------------------
+[ ] All original features work without keys in browser.
+[ ] Share link still restores route.
+[ ] GPX download works.
+[ ] User can register, login, save, list, delete routes.
+[ ] Rate-limit blocks brute force.
+[ ] CORS blocks third-party sites.
+
+10. Deliverables
+----------------
+1. server/ Express project (Dockerfile, docker-compose.yml)
+2. SQL dump schema.sql for phpMyAdmin
+3. Updated index.html + app.js (only API URLs changed)
+4. README.md with local & production setup steps
+
+11. Future Enhancements (out of scope)
+--------------------------------------
+- Turn-by-turn voice navigation
+- Offline map tiles
+- Social sharing with short URLs
+
+End of PRD – ready for LLM implementation.
