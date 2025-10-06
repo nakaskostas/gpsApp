@@ -17,7 +17,7 @@
     <style>
         /* Custom styles for the application */
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Poppins', sans-serif;
             overflow: hidden; /* Prevent body scroll */
         }
         
@@ -110,8 +110,10 @@
 
         /* Common button style */
         .action-button {
-            background: white;
-            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(200, 200, 200, 0.4);
             border-radius: 0.5rem;
             padding: 0.75rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -130,10 +132,7 @@
             top: 5.5rem; /* Adjusted for new button layout */
             right: 1rem;
             z-index: 2000;
-            background: white;
             padding: 1rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             min-width: 300px;
         }
         
@@ -141,13 +140,18 @@
             display: none;
         }
 
-        /* --- STYLES FOR BOTTOM PANEL --- */
-        #bottomPanel {
-            height: 35vh;
+        /* --- STYLES FOR GLASS PANELS (BOTTOM & MENU) --- */
+        .glass-panel {
             background: rgba(255, 255, 255, 0.1); /* Increased transparency */
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border-top: 1px solid rgba(200, 200, 200, 0.4);
+            border: 1px solid rgba(200, 200, 200, 0.4);
+        }
+
+        #bottomPanel {
+            height: 35vh;
+            border-top-width: 1px; /* Keep only top border */
+            border-left-width: 0; border-right-width: 0; border-bottom-width: 0;
             transform: translateY(100%);
             transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.1);
@@ -241,25 +245,39 @@
             white-space: normal; /* Allow wrapping */
         }
 
+        /* Context Menu Styles */
+        #contextMenu {
+            background: rgba(255, 255, 255, 0.8); /* Transparent white */
+            backdrop-filter: blur(10px); /* Blur effect */
+            -webkit-backdrop-filter: blur(10px); /* Safari support */
+            border: 1px solid rgba(200, 200, 200, 0.4);
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 0.5rem;
+            z-index: 5000; /* Ensure it's on top of other elements */
+            min-width: 220px;
+            transform-origin: top left; /* For potential future animations */
+            transition: opacity 0.1s ease-out;
+        }
+
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 </head>
 <body class="bg-gray-100">
     <!-- Main container for the map -->
     <div class="relative w-screen h-screen">
         <div id="map"></div>
         
-        <!-- Top Right Buttons Container -->
-        <div class="absolute top-4 right-4 z-[2000] flex items-center space-x-2">
-            <!-- Undo Button -->
-            <button id="undoButton" class="action-button disabled:opacity-50 disabled:cursor-not-allowed" title="Αναίρεση" disabled>
-                <span class="text-xl leading-none">↶</span>
+        <!-- Top Right Buttons -->
+        <div class="absolute top-4 right-4 z-[2000]">
+            <!-- Undo Button (Stretched) -->
+            <button id="undoButton" class="action-button disabled:opacity-50 disabled:cursor-not-allowed absolute right-[3.5rem] w-[calc(300px-3.5rem+2px)] text-center" title="Αναίρεση" disabled>
+                <span class="text-xl leading-none">↶ Αναίρεση</span>
             </button>
-            
             <!-- Menu Toggle Button -->
-            <button id="menuToggle" class="action-button">
+            <button id="menuToggle" class="action-button float-right">
                 <svg id="menuIcon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                 </svg>
@@ -270,7 +288,7 @@
         </div>
         
         <!-- Floating Menu Panel -->
-        <div id="menuPanel" class="menu-panel menu-hidden">
+        <div id="menuPanel" class="menu-panel menu-hidden glass-panel rounded-lg shadow-md">
              <!-- Search Bar -->
             <div class="relative mb-4">
                 <input type="search" id="search-input" placeholder="Αναζήτηση τοποθεσίας..." class="w-full pl-3 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -338,6 +356,20 @@
             </div>
         </div>
 
+        <!-- Right-Click Context Menu -->
+        <div id="contextMenu" class="absolute hidden">
+            <button id="addWaypointBtn" class="w-full text-left px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-blue-100 hover:text-blue-700 rounded-md flex items-center gap-3">
+                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6V4m0 14v-2m-6-6H4m14 0h-2"></path></svg>
+                Προσθήκη Ενδιάμεσου Pin
+            </button>
+            <button id="removePinBtn" class="w-full text-left px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-100 hover:text-red-700 rounded-md flex items-center gap-3">
+                <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                Αφαίρεση Pin
+            </button>
+            <!-- Προσθέστε εδώ και άλλες επιλογές μελλοντικά -->
+        </div>
+
+
         <!-- Top Right Loading Spinner (for general operations) -->
         <div id="topRightLoader" class="absolute top-20 right-6 z-[1999] hidden">
             <div class="bg-white p-2 rounded-full shadow-lg">
@@ -353,7 +385,7 @@
         <!-- Instructions Overlay -->
         <div id="instructions" class="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg shadow-lg z-[900]">
             <p class="text-blue-800 text-sm font-medium">
-                Κάντε κλικ στον χάρτη για να προσθέσετε σημεία. Δεξί κλικ για αφαίρεση.
+                Κάντε κλικ στον χάρτη για να προσθέσετε σημεία.
             </p>
         </div>
 
@@ -366,7 +398,7 @@
     </div>
 
     <!-- Bottom Section: Stats & Elevation Profile -->
-    <div id="bottomPanel" class="absolute bottom-0 left-0 right-0 flex z-[1002]">
+    <div id="bottomPanel" class="absolute bottom-0 left-0 right-0 flex z-[1002] glass-panel">
         
         <!-- Button to hide the bottom panel -->
         <button id="hide-panel-button" class="absolute top-2 right-2 p-2 rounded-full hover:bg-gray-400/30 transition-colors z-10" title="Απόκρυψη πίνακα">
@@ -376,29 +408,32 @@
         </button>
 
         <!-- Left Area: Route Statistics Panel -->
-        <div id="stats-panel" class="w-[30%] p-4 border-r border-gray-200/50 overflow-y-auto">
-            <h2 class="text-lg font-bold mb-4 text-gray-800">Στατιστικά Διαδρομής</h2>
-            <div id="stats-content" class="space-y-4">
-                <!-- Stats will be populated here -->
-                <div class="text-center p-3 bg-gray-50/70 rounded-lg">
-                    <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
-                    <div id="totalDistance" class="font-bold text-2xl text-blue-600 mt-1">--</div>
+        <div id="stats-panel" class="w-[30%] p-4 border-r border-gray-200/50">
+            <h2 class="text-lg font-bold mb-4 text-gray-800 text-center">Στατιστικά Διαδρομής</h2>
+            <div id="stats-content" class="grid grid-cols-6 gap-3">
+                <!-- Total Distance -->
+                    <div class="col-span-6 text-center p-3 rounded-lg shadow-md">
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
+                    <div id="totalDistance" class="font-bold text-3xl text-blue-600 mt-1">--</div>
                 </div>
                 <!-- Estimated Duration -->
-                <div class="text-center p-3 bg-gray-50/70 rounded-lg">
-                    <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Εκτιμώμενη Διάρκεια</div>
-                    <div id="estimatedDuration" class="font-bold text-2xl text-purple-600 mt-1 cursor-help">--</div>
+                <div class="col-span-6 text-center p-3 rounded-lg shadow-md">
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Εκτιμώμενη Διάρκεια</div>
+                    <div id="estimatedDuration" class="font-bold text-3xl text-purple-600 mt-1 cursor-help">--</div>
                 </div>
-                <div class="text-center p-3 bg-gray-50/70 rounded-lg">
-                    <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Απόσταση Απότομης Ανάβασης (>5°)</div>
+
+                <!-- Steep Uphill -->
+                <div class="col-span-6 text-center p-2 rounded-lg shadow-md mt-4">
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold leading-tight">Απόσταση Απότομης Ανάβασης (&gt;5°)</div>
                     <div id="steepUphillDistance" class="font-bold text-2xl text-red-600 mt-1">--</div>
                 </div>
-                <div class="text-center p-3 bg-gray-50/70 rounded-lg">
-                    <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Θετική Υψομετρική</div>
+                <!-- Elevation Gain & Loss -->
+                <div class="col-span-3 text-center p-2 rounded-lg shadow-md">
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Θετική Υψομετρική</div>
                     <div id="elevationGain" class="font-bold text-2xl text-green-600 mt-1">--</div>
                 </div>
-                <div class="text-center p-3 bg-gray-50/70 rounded-lg">
-                    <div class="text-gray-500 text-xs uppercase tracking-wider font-semibold">Αρνητική Υψομετρική</div>
+                <div class="col-span-3 text-center p-2 rounded-lg shadow-md">
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Αρνητική Υψομετρική</div>
                     <div id="elevationLoss" class="font-bold text-2xl text-orange-500 mt-1">--</div>
                 </div>
             </div>
@@ -409,7 +444,7 @@
 
         <!-- Right Area: Elevation Profile Graph -->
         <div id="elevation-panel" class="w-[70%] p-4 flex flex-col">
-            <h2 class="text-lg font-bold mb-2 text-gray-800">Υψομετρικό Προφίλ</h2>
+            <h2 class="text-lg font-bold mb-2 text-gray-800 text-center">Υψομετρικό Προφίλ</h2>
             <div id="elevationChartContainer" class="flex-grow relative -ml-4">
                 <canvas id="elevationChart"></canvas>
                 <div id="no-elevation-message" class="flex items-center justify-center h-full text-gray-500">
@@ -464,6 +499,9 @@
             isSearchLoading: false,
         };
 
+        let rightClickLatLng = null; // Stores the latlng of the right-click event
+        let insertIndex = -1; // Stores the calculated index for waypoint insertion
+        let rightClickedPinIndex = -1; // Stores the index of the right-clicked marker
         // --- UI ELEMENTS & SHARED VARIABLES ---
         let bottomPanel, hidePanelButton, showPanelButton;
         let activeSearchTooltip = null; // NEW: Variable to hold the active search result tooltip
@@ -595,6 +633,22 @@
             });
 
             setupTooltips();
+
+            // Event listener for the "Add Waypoint" button
+            document.getElementById('addWaypointBtn').addEventListener('click', () => {
+                if (rightClickLatLng && insertIndex !== -1) {
+                    addWaypoint(rightClickLatLng, insertIndex);
+                    document.getElementById('contextMenu').classList.add('hidden');
+                }
+            });
+
+            // Event listener for the "Remove Pin" button
+            document.getElementById('removePinBtn').addEventListener('click', () => {
+                if (rightClickedPinIndex !== -1) {
+                    removePin(rightClickedPinIndex);
+                    document.getElementById('contextMenu').classList.add('hidden');
+                }
+            });
         }
 
         // --- GENERIC TOOLTIP CREATION ---
@@ -811,39 +865,127 @@
             updateUIState();
         }
         
+        // MODIFIED: handleMapRightClick now shows a context menu
         function handleMapRightClick(e) {
-    e.originalEvent.preventDefault();
-    if (state.pins.length === 0) return;
+            e.originalEvent.preventDefault();
+            
+            rightClickLatLng = e.latlng;
+            insertIndex = findBestWaypointInsertIndex(rightClickLatLng);
+            rightClickedPinIndex = -1; // Reset pin index
 
-    let nearestIndex = -1;
-    let minDistance = Infinity;
-    
-    state.pins.forEach((pin, index) => {
-        const distance = e.latlng.distanceTo(pin);
-        if (distance < minDistance) {
-            minDistance = distance;
-            nearestIndex = index;
+            // Configure menu for "Add Waypoint"
+            const addWaypointBtn = document.getElementById('addWaypointBtn');
+            const removePinBtn = document.getElementById('removePinBtn');
+            addWaypointBtn.style.display = 'flex';
+            removePinBtn.style.display = 'none';
+
+            const contextMenu = document.getElementById('contextMenu');
+            
+            // Temporarily show to get dimensions, then hide
+            contextMenu.style.visibility = 'hidden';
+            contextMenu.classList.remove('hidden');
+            const menuWidth = contextMenu.offsetWidth;
+            const menuHeight = contextMenu.offsetHeight;
+            contextMenu.classList.add('hidden');
+            contextMenu.style.visibility = 'visible';
+
+            let x = e.originalEvent.clientX;
+            let y = e.originalEvent.clientY;
+
+            // Adjust position if it goes off screen
+            if (x + menuWidth > window.innerWidth) {
+                x = window.innerWidth - menuWidth - 10; // 10px padding from right edge
+            }
+            if (y + menuHeight > window.innerHeight) {
+                y = window.innerHeight - menuHeight - 10; // 10px padding from bottom edge
+            }
+            if (x < 0) x = 0; // Don't go off left edge
+            if (y < 0) y = 0; // Don't go off top edge
+
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
+            contextMenu.classList.remove('hidden');
+
+            // Hide menu if clicked outside or another right-click occurs
+            const hideMenu = (event) => {
+                if (!contextMenu.contains(event.target) && event.button !== 2) {
+                    contextMenu.classList.add('hidden');
+                    document.removeEventListener('click', hideMenu);
+                    document.removeEventListener('contextmenu', hideMenu);
+                }
+            };
+            document.addEventListener('click', hideMenu);
+            document.addEventListener('contextmenu', hideMenu);
         }
-    });
-    
-    if (nearestIndex !== -1) {
-        // Check if it's a round trip and clicking on the first/last point
-        if (state.isRoundTrip && nearestIndex === 0 && state.pins.length >= 2) {
-            // Disable round trip instead of deleting
-            state.isRoundTrip = false;
-            document.getElementById('roundTripToggle').checked = false;
-            updateFirstMarkerIcon();
+
+        // NEW: Function to handle right-click on a marker
+        function handleMarkerRightClick(e) {
+            e.originalEvent.preventDefault();
+            L.DomEvent.stopPropagation(e); // Prevent map's contextmenu from firing
+
+            rightClickedPinIndex = state.markers.indexOf(e.target);
+            if (rightClickedPinIndex === -1) return;
+
+            // Configure menu for "Remove Pin"
+            const addWaypointBtn = document.getElementById('addWaypointBtn');
+            const removePinBtn = document.getElementById('removePinBtn');
+            addWaypointBtn.style.display = 'none';
+            removePinBtn.style.display = 'flex';
+
+            const contextMenu = document.getElementById('contextMenu');
+            
+            // Temporarily show to get dimensions, then hide
+            contextMenu.style.visibility = 'hidden';
+            contextMenu.classList.remove('hidden');
+            const menuWidth = contextMenu.offsetWidth;
+            const menuHeight = contextMenu.offsetHeight;
+            contextMenu.classList.add('hidden');
+            contextMenu.style.visibility = 'visible';
+
+            let x = e.originalEvent.clientX;
+            let y = e.originalEvent.clientY;
+
+            // Adjust position if it goes off screen
+            if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
+            if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
+            contextMenu.classList.remove('hidden');
+
+            const hideMenu = (event) => {
+                if (!contextMenu.contains(event.target) && event.button !== 2) {
+                    contextMenu.classList.add('hidden');
+                    document.removeEventListener('click', hideMenu);
+                    document.removeEventListener('contextmenu', hideMenu);
+                }
+            };
+            document.addEventListener('click', hideMenu);
+            document.addEventListener('contextmenu', hideMenu);
+        }
+
+        // NEW: Function to add a waypoint at a specific index
+        function addWaypoint(latlng, index) {
+            if (state.pins.length >= CONFIG.MAX_PINS) {
+                showMessage(`Επιτρέπονται μέχρι ${CONFIG.MAX_PINS} σημεία.`, 'error');
+                return;
+            }
+
+            state.pins.splice(index, 0, latlng); // Insert at the specific index
+            
+            // Re-add all markers to update numbering and icons
+            state.markers.forEach(marker => state.map.removeLayer(marker));
+            state.markers = [];
+            state.pins.forEach((pin, i) => addMarker(pin, i + 1));
+
             if (state.pins.length >= 2) calculateRoute();
             saveState();
             updateUIState();
-        } else {
-            // Normal deletion behavior
-            removePin(nearestIndex);
         }
-    }
-}
 
-        function addMarker(latlng, number) {
+        function addMarker(latlng, number) { // number is now the 1-based index
             const isFirst = number === 1;
             const marker = L.marker(latlng, {
                 icon: createNumberedIcon(number, isFirst),
@@ -856,6 +998,8 @@
                 if (state.pins.length >= 2) calculateRoute();
                 saveState();
             });
+
+            marker.on('contextmenu', handleMarkerRightClick);
             
             state.markers.push(marker);
             updateFirstMarkerIcon(); // Update icon based on round trip status
@@ -1566,6 +1710,39 @@
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             return R * c;
         }
+
+        // NEW: Function to find the best index to insert a new waypoint
+        function findBestWaypointInsertIndex(newLatLng) {
+            if (state.pins.length < 2) {
+                return state.pins.length; // If less than 2 pins, just append
+            }
+
+            let minDistance = Infinity;
+            let bestIndex = state.pins.length; // Default to appending
+
+            for (let i = 0; i < state.pins.length - 1; i++) {
+                const p1 = state.pins[i];
+                const p2 = state.pins[i + 1];
+
+                // Calculate distance from newLatLng to the segment (p1, p2)
+                // This is a simplified approach. A more accurate one would project the point onto the segment.
+                // For now, we'll use the distance to the closest point on the segment.
+                const distToSegment = (p, a, b) => {
+                    const L2 = a.distanceTo(b) * a.distanceTo(b);
+                    if (L2 === 0) return p.distanceTo(a); // a == b
+                    const t = ((p.lng - a.lng) * (b.lng - a.lng) + (p.lat - a.lat) * (b.lat - a.lat)) / L2;
+                    if (t < 0) return p.distanceTo(a);
+                    if (t > 1) return p.distanceTo(b);
+                    const projection = L.latLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lat));
+                    return p.distanceTo(projection);
+                };
+                if (distToSegment(newLatLng, p1, p2) < minDistance) {
+                    minDistance = distToSegment(newLatLng, p1, p2);
+                    bestIndex = i + 1; // Insert after p1
+                }
+            }
+            return bestIndex;
+        }
         
        function calculateAndDisplayDuration(distance, elevationGain) {
             if (distance === 0) {
@@ -1656,8 +1833,8 @@
         }
 
         function updateStatsVisibility(show) {
-            document.getElementById('stats-content').style.display = show ? 'block' : 'none';
-            document.getElementById('no-stats-message').style.display = show ? 'none' : 'flex';
+            document.getElementById('stats-content').classList.toggle('hidden', !show);
+            document.getElementById('no-stats-message').classList.toggle('hidden', show);
         }
     </script>
 </body>
