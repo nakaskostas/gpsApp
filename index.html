@@ -344,6 +344,10 @@
                     </svg>
                     Λήψη GPX
                 </button>
+                <button id="downloadPDF" class="flex items-center justify-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors shadow-sm mt-2" style="display: none;">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    Κατέβασε pdf διαδρομής
+                </button>
             </div>
             
             <!-- Round Trip Toggle -->
@@ -483,7 +487,149 @@
     <!-- Leaflet Polyline Decorator Plugin for arrows -->
     <script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
     
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
+
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <script>
+        // --- PDF GENERATION ---
+        function generateSteepnessReport(routeCoordinates) {
+            const reportLines = [];
+            if (!routeCoordinates || routeCoordinates.length < 2) {
+                return reportLines;
+            }
+
+            let segments = [];
+            let currentSegment = {
+                gradients: [],
+                distance: 0,
+                startDistance: 0
+            };
+            let lastSteepStatus = null;
+            let cumulativeDistance = 0;
+
+            for (let i = 1; i < routeCoordinates.length; i++) {
+                const p1 = routeCoordinates[i - 1];
+                const p2 = routeCoordinates[i];
+                const segmentDistance = calculateHaversineDistance(p1, p2);
+                const elevationDiff = p2[2] - p1[2];
+                let gradient = 0;
+                if (segmentDistance > 0) {
+                    gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
+                }
+                
+                const isSteep = gradient > CONFIG.STEEP_GRADIENT_THRESHOLD;
+
+                if (i === 1) {
+                    lastSteepStatus = isSteep;
+                }
+
+                if (isSteep !== lastSteepStatus) {
+                    currentSegment.endDistance = cumulativeDistance;
+                    segments.push(currentSegment);
+                    currentSegment = {
+                        gradients: [],
+                        distance: 0,
+                        startDistance: cumulativeDistance
+                    };
+                }
+                
+                currentSegment.gradients.push(gradient);
+                currentSegment.distance += segmentDistance;
+                cumulativeDistance += segmentDistance;
+                lastSteepStatus = isSteep;
+            }
+            currentSegment.endDistance = cumulativeDistance;
+            segments.push(currentSegment);
+
+            return segments.map(seg => {
+                const avgGradient = seg.gradients.reduce((a, b) => a + b, 0) / (seg.gradients.length || 1);
+                const startKm = (seg.startDistance / 1000).toFixed(2);
+                const endKm = (seg.endDistance / 1000).toFixed(2);
+                if (startKm === endKm) return null; // Skip zero-length segments
+                return `Από το ${startKm} km έως το ${endKm} km, η μέση κλίση είναι ${avgGradient.toFixed(1)}°.`;
+            }).filter(line => line !== null);
+        }
+
+        async function downloadRoutePDF() {
+            if (!state.currentRoute) {
+                showMessage('Δεν υπάρχει διαδρομή για λήψη', 'error');
+                return;
+            }
+            if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined') {
+                showMessage('Οι βιβλιοθήκες PDF δεν έχουν φορτωθεί. Δοκιμάστε ξανά.', 'error');
+                return;
+            }
+
+            showLoading(true);
+
+            const reportElement = document.createElement('div');
+            reportElement.style.position = 'absolute';
+            reportElement.style.left = '-9999px';
+            reportElement.style.width = '700px';
+            reportElement.style.padding = '20px';
+            reportElement.style.fontFamily = 'Arial, sans-serif';
+            reportElement.style.color = '#000';
+            reportElement.style.backgroundColor = '#fff';
+
+            const totalDistance = document.getElementById('totalDistance').textContent;
+            const estimatedDuration = document.getElementById('estimatedDuration').textContent;
+            const steepUphillDistance = document.getElementById('steepUphillDistance').textContent;
+            const elevationGain = document.getElementById('elevationGain').textContent;
+            const elevationLoss = document.getElementById('elevationLoss').textContent;
+
+            const reportLines = generateSteepnessReport(state.currentRoute.coordinates);
+
+            reportElement.innerHTML = `
+                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;">Αναφορά Διαδρομής</h1>
+                <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">Στατιστικά</h2>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Εκτιμώμενη Διάρκεια:</td><td style="padding: 8px;">${estimatedDuration}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Απόσταση Απότομης Ανάβασης (>5°):</td><td style="padding: 8px;">${steepUphillDistance}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Θετική Υψομετρική:</td><td style="padding: 8px;">${elevationGain}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Αρνητική Υψομετρική:</td><td style="padding: 8px;">${elevationLoss}</td></tr>
+                </table>
+                <h2 style="font-size: 20px; font-weight: bold; margin-top: 30px; margin-bottom: 10px;">Ανάλυση Κλίσεων</h2>
+                <div style="font-size: 14px; line-height: 1.6;">
+                    ${reportLines.join('<br>')}
+                </div>
+            `;
+            document.body.appendChild(reportElement);
+
+            try {
+                const canvas = await html2canvas(reportElement, { scale: 2 });
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = jspdf;
+                const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = pdf.internal.pageSize.getHeight();
+                const imgWidth = pdfWidth;
+                const imgHeight = canvas.height * imgWidth / canvas.width;
+                let heightLeft = imgHeight;
+                let position = 0;
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pdfHeight;
+                while (heightLeft > 0) {
+                    position -= pdfHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pdfHeight;
+                }
+                pdf.save('route-report.pdf');
+            } catch (error) {
+                console.error("PDF generation failed:", error);
+                showMessage('Η δημιουργία του PDF απέτυχε.', 'error');
+            } finally {
+                document.body.removeChild(reportElement);
+                showLoading(false);
+            }
+        }
+        // --- END PDF GENERATION ---
+
+        // --- CONFIGURATION ---
         // --- CONFIGURATION ---
         const CONFIG = {
             OPENROUTE_API_KEY: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA4MzcyNTdiZjZkYjQxODc4YWY3Y2I4ZDA1OTVjMTI3IiwiaCI6Im11cm11cjY0In0=',
@@ -581,6 +727,7 @@
         function setupEventListeners() {
             document.getElementById('clearRoute').addEventListener('click', () => clearRoute(true));
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
+            document.getElementById('downloadPDF').addEventListener('click', downloadRoutePDF);
             document.getElementById('undoButton').addEventListener('click', undo);
             document.getElementById('shareButton').addEventListener('click', copyShareLink);
 
@@ -1524,7 +1671,7 @@
 
                 allSegments.forEach(segment => {
                     const polyline = L.polyline(segment.coords, {
-                        color: segment.isSteep ? '#EF4444' : '#3B82F6', weight: 5, opacity: 0.85
+                        color: segment.isSteep ? '#FF0000' : '#3B82F6', weight: 5, opacity: 0.85
                     }).addTo(state.map);
                     state.routePolylines.push(polyline);
                 });
@@ -1577,15 +1724,44 @@
             const labels = elevationData.map(d => (d.distance / 1000).toFixed(2));
             const smoothed = smoothElevation(elevationData);
             const elevations = smoothed.map(d => d.elevation);
+
+            // Calculate gradients for each segment of the smoothed data
+            const gradients = [];
+            for (let i = 1; i < smoothed.length; i++) {
+                const p1 = smoothed[i - 1];
+                const p2 = smoothed[i];
+                const elevationDiff = p2.elevation - p1.elevation;
+                const distanceDiff = p2.distance - p1.distance;
+                if (distanceDiff > 0 && elevationDiff > 0) { // Only check for uphills
+                    const gradient = Math.atan(elevationDiff / distanceDiff) * (180 / Math.PI);
+                    gradients.push(gradient);
+                } else {
+                    gradients.push(0); // No steepness for downhills or flat sections
+                }
+            }
             
             state.elevationChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Υψόμετρο (m)', data: elevations, borderColor: '#3B82F6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 2,
-                        fill: true, pointRadius: 0, pointHoverRadius: 5, tension: 0.6
+                        label: 'Υψόμετρο (m)',
+                        data: elevations,
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 2.7,
+                        fill: true,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        tension: 0.6,
+                        segment: {
+                            borderColor: ctx => {
+                                const index = ctx.p0DataIndex;
+                                if (gradients[index] > CONFIG.STEEP_GRADIENT_THRESHOLD) {
+                                    return '#FF0000'; // A brighter red for steep sections
+                                }
+                                return '#3B82F6'; // Blue for normal
+                            }
+                        }
                     }]
                 },
                 options: {
@@ -1851,6 +2027,7 @@
             
             document.getElementById('instructions').style.display = hasPins ? 'none' : 'block';
             document.getElementById('downloadGPX').style.display = hasRoute ? 'flex' : 'none';
+            document.getElementById('downloadPDF').style.display = hasRoute ? 'flex' : 'none';
             document.getElementById('shareButton').disabled = !hasPins;
             showPanelButton.classList.toggle('hidden', !hasRoute || bottomPanel.classList.contains('is-visible'));
             updateUndoButton();
