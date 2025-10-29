@@ -149,12 +149,18 @@
         }
 
         #bottomPanel {
-            height: 35vh;
+            height: 50vh; /* Default height for mobile */
             border-top-width: 1px; /* Keep only top border */
             border-left-width: 0; border-right-width: 0; border-bottom-width: 0;
             transform: translateY(100%);
             transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
             box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        @media (min-width: 1024px) {
+            #bottomPanel {
+                height: 35vh;
+            }
         }
         
         #bottomPanel.is-visible {
@@ -258,6 +264,23 @@
             min-width: 220px;
             transform-origin: top left; /* For potential future animations */
             transition: opacity 0.1s ease-out;
+        }
+
+        /* --- FONT SCALING FOR LARGE DISPLAYS --- */
+        @media (min-width: 1920px) {
+            html {
+                font-size: 17px; /* Base is 16px, this is ~6% larger */
+            }
+        }
+        @media (min-width: 2560px) {
+            html {
+                font-size: 18px; /* This is ~12.5% larger */
+            }
+        }
+        @media (min-width: 3840px) {
+            html {
+                font-size: 20px; /* This is 25% larger */
+            }
         }
 
     </style>
@@ -398,7 +421,7 @@
     </div>
 
     <!-- Bottom Section: Stats & Elevation Profile -->
-    <div id="bottomPanel" class="absolute bottom-0 left-0 right-0 flex z-[1002] glass-panel">
+    <div id="bottomPanel" class="absolute bottom-0 left-0 right-0 flex flex-col lg:flex-row z-[1002] glass-panel">
         
         <!-- Button to hide the bottom panel -->
         <button id="hide-panel-button" class="absolute top-2 right-2 p-2 rounded-full hover:bg-gray-400/30 transition-colors z-10" title="Απόκρυψη πίνακα">
@@ -408,31 +431,31 @@
         </button>
 
         <!-- Left Area: Route Statistics Panel -->
-        <div id="stats-panel" class="w-[30%] p-4 border-r border-gray-200/50">
+        <div id="stats-panel" class="w-full lg:w-[30%] p-4 border-r border-gray-200/50 overflow-y-auto h-1/2 lg:h-full">
             <h2 class="text-lg font-bold mb-4 text-gray-800 text-center">Στατιστικά Διαδρομής</h2>
-            <div id="stats-content" class="grid grid-cols-6 gap-3">
+            <div id="stats-content" class="grid grid-cols-4 gap-3">
                 <!-- Total Distance -->
-                    <div class="col-span-6 text-center p-3 rounded-lg shadow-md">
+                    <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
                     <div id="totalDistance" class="font-bold text-3xl text-blue-600 mt-1">--</div>
                 </div>
                 <!-- Estimated Duration -->
-                <div class="col-span-6 text-center p-3 rounded-lg shadow-md">
+                <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Εκτιμώμενη Διάρκεια</div>
                     <div id="estimatedDuration" class="font-bold text-3xl text-purple-600 mt-1 cursor-help">--</div>
                 </div>
 
                 <!-- Steep Uphill -->
-                <div class="col-span-6 text-center p-2 rounded-lg shadow-md mt-4">
+                <div class="col-span-4 text-center p-2 rounded-lg shadow-md mt-4">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold leading-tight">Απόσταση Απότομης Ανάβασης (&gt;5°)</div>
                     <div id="steepUphillDistance" class="font-bold text-2xl text-red-600 mt-1">--</div>
                 </div>
                 <!-- Elevation Gain & Loss -->
-                <div class="col-span-3 text-center p-2 rounded-lg shadow-md">
+                <div class="col-span-2 text-center p-2 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Θετική Υψομετρική</div>
                     <div id="elevationGain" class="font-bold text-2xl text-green-600 mt-1">--</div>
                 </div>
-                <div class="col-span-3 text-center p-2 rounded-lg shadow-md">
+                <div class="col-span-2 text-center p-2 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Αρνητική Υψομετρική</div>
                     <div id="elevationLoss" class="font-bold text-2xl text-orange-500 mt-1">--</div>
                 </div>
@@ -443,7 +466,7 @@
         </div>
 
         <!-- Right Area: Elevation Profile Graph -->
-        <div id="elevation-panel" class="w-[70%] p-4 flex flex-col">
+        <div id="elevation-panel" class="w-full lg:w-[70%] p-4 flex flex-col h-1/2 lg:h-full">
             <h2 class="text-lg font-bold mb-2 text-gray-800 text-center">Υψομετρικό Προφίλ</h2>
             <div id="elevationChartContainer" class="flex-grow relative -ml-4">
                 <canvas id="elevationChart"></canvas>
@@ -629,6 +652,11 @@
             window.addEventListener('resize', () => {
                 if (state.map) {
                     setTimeout(() => state.map.invalidateSize(), 100);
+                }
+                if (state.elevationChart) {
+                    setTimeout(() => {
+                        state.elevationChart.resize();
+                    }, 150);
                 }
             });
 
