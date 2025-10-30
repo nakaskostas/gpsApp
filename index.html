@@ -496,9 +496,8 @@
     <script>
         // --- PDF GENERATION ---
         function generateSteepnessReport(routeCoordinates) {
-            const reportLines = [];
             if (!routeCoordinates || routeCoordinates.length < 2) {
-                return reportLines;
+                return [];
             }
 
             let segments = [];
@@ -527,8 +526,11 @@
                 }
 
                 if (isSteep !== lastSteepStatus) {
-                    currentSegment.endDistance = cumulativeDistance;
-                    segments.push(currentSegment);
+                    if (currentSegment.distance > 0) {
+                        currentSegment.endDistance = cumulativeDistance;
+                        currentSegment.isSteep = lastSteepStatus; // Attach status
+                        segments.push(currentSegment);
+                    }
                     currentSegment = {
                         gradients: [],
                         distance: 0,
@@ -541,16 +543,26 @@
                 cumulativeDistance += segmentDistance;
                 lastSteepStatus = isSteep;
             }
-            currentSegment.endDistance = cumulativeDistance;
-            segments.push(currentSegment);
+            
+            if (currentSegment.distance > 0) {
+                currentSegment.endDistance = cumulativeDistance;
+                currentSegment.isSteep = lastSteepStatus; // Attach status for the last segment
+                segments.push(currentSegment);
+            }
 
             return segments.map(seg => {
                 const avgGradient = seg.gradients.reduce((a, b) => a + b, 0) / (seg.gradients.length || 1);
-                const startKm = (seg.startDistance / 1000).toFixed(2);
-                const endKm = (seg.endDistance / 1000).toFixed(2);
-                if (startKm === endKm) return null; // Skip zero-length segments
-                return `Από το ${startKm} km έως το ${endKm} km, η μέση κλίση είναι ${avgGradient.toFixed(1)}°.`;
-            }).filter(line => line !== null);
+                const startKm = (seg.startDistance / 1000);
+                const endKm = (seg.endDistance / 1000);
+
+                return {
+                    startKm: startKm.toFixed(2),
+                    endKm: endKm.toFixed(2),
+                    gradient: avgGradient.toFixed(1),
+                    isSteep: seg.isSteep, // Use the attached status
+                    distance: seg.distance
+                };
+            }).filter(seg => seg !== null);
         }
 
         async function downloadRoutePDF() {
@@ -580,11 +592,57 @@
             const elevationGain = document.getElementById('elevationGain').textContent;
             const elevationLoss = document.getElementById('elevationLoss').textContent;
 
-            const reportLines = generateSteepnessReport(state.currentRoute.coordinates);
+            const segments = generateSteepnessReport(state.currentRoute.coordinates);
+            let totalSteepDistance = 0;
+
+            const formatDistance = (d) => d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`;
+
+            let tableHtml = `
+                <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                    <div style="display: table-header-group; font-weight: bold;">
+                        <div style="display: table-row; border-bottom: 2px solid #555;">
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Από</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Έως</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Κλίση</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 40%;">Μήκος Απότομης Ανάβασης</div>
+                        </div>
+                    </div>
+                    <div style="display: table-row-group;">
+            `;
+
+            segments.forEach(seg => {
+                const gradientStyle = seg.isSteep ? 'color: red;' : '';
+                let steepLengthText = '-';
+                if (seg.isSteep) {
+                    steepLengthText = `<span style="color: red;">${formatDistance(seg.distance)}</span>`;
+                    totalSteepDistance += seg.distance;
+                }
+
+                tableHtml += `
+                    <div style="display: table-row; border-bottom: 1px solid #ccc; page-break-inside: avoid !important;">
+                        <div style="display: table-cell; padding: 12px; text-align: center;">${seg.startKm} km</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center;">${seg.endKm} km</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center; ${gradientStyle}">${seg.gradient}°</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center;">${steepLengthText}</div>
+                    </div>
+                `;
+            });
+
+            tableHtml += `</div></div>`;
+            
+            tableHtml += `
+                <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 15px;">
+                    <div style="display: table-row;">
+                        <div style="display: table-cell; padding: 12px; text-align: left; font-weight: bold; width: 60%;">Συνολικό Μήκος Απότομης Ανάβασης (>5°):</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center; font-weight: bold; color: red; width: 40%;">${formatDistance(totalSteepDistance)}</div>
+                    </div>
+                </div>
+            `;
+
 
             reportElement.innerHTML = `
-                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px;">Αναφορά Διαδρομής</h1>
-                <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px;">Στατιστικά</h2>
+                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής</h1>
+                <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px; text-align: center;">Στατιστικά</h2>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Εκτιμώμενη Διάρκεια:</td><td style="padding: 8px;">${estimatedDuration}</td></tr>
@@ -592,10 +650,8 @@
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Θετική Υψομετρική:</td><td style="padding: 8px;">${elevationGain}</td></tr>
                     <tr><td style="padding: 8px; font-weight: bold;">Αρνητική Υψομετρική:</td><td style="padding: 8px;">${elevationLoss}</td></tr>
                 </table>
-                <h2 style="font-size: 20px; font-weight: bold; margin-top: 30px; margin-bottom: 10px;">Ανάλυση Κλίσεων</h2>
-                <div style="font-size: 14px; line-height: 1.6;">
-                    ${reportLines.join('<br>')}
-                </div>
+                <h2 style="font-size: 20px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; text-align: center;">Ανάλυση Κλίσεων</h2>
+                ${tableHtml}
             `;
             document.body.appendChild(reportElement);
 
@@ -604,19 +660,32 @@
                 const imgData = canvas.toDataURL('image/png');
                 const { jsPDF } = jspdf;
                 const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+                
                 const pdfWidth = pdf.internal.pageSize.getWidth();
                 const pdfHeight = pdf.internal.pageSize.getHeight();
+                const margin = 10;
+
                 const imgWidth = pdfWidth;
                 const imgHeight = canvas.height * imgWidth / canvas.width;
+                
                 let heightLeft = imgHeight;
                 let position = 0;
-                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                heightLeft -= pdfHeight;
+                const pageContentHeight = pdfHeight - margin * 2;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                pdf.setFillColor(255, 255, 255);
+                pdf.rect(0, 0, pdfWidth, margin, 'F');
+                pdf.rect(0, pdfHeight - margin, pdfWidth, margin, 'F');
+                heightLeft -= pageContentHeight;
+
                 while (heightLeft > 0) {
-                    position -= pdfHeight;
+                    position -= pageContentHeight;
                     pdf.addPage();
                     pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                    heightLeft -= pdfHeight;
+                    pdf.setFillColor(255, 255, 255);
+                    pdf.rect(0, 0, pdfWidth, margin, 'F');
+                    pdf.rect(0, pdfHeight - margin, pdfWidth, margin, 'F');
+                    heightLeft -= pageContentHeight;
                 }
                 pdf.save('route-report.pdf');
             } catch (error) {
@@ -627,7 +696,6 @@
                 showLoading(false);
             }
         }
-        // --- END PDF GENERATION ---
 
         // --- CONFIGURATION ---
         // --- CONFIGURATION ---
