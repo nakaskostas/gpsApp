@@ -108,6 +108,24 @@
             background: #888;
         }
 
+        /* Custom scrollbar for the address list */
+        #addressList::-webkit-scrollbar {
+            width: 6px;
+        }
+        #addressList::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #addressList::-webkit-scrollbar-thumb {
+            background: #a8a8a8;
+            border-radius: 3px;
+        }
+        #addressList::-webkit-scrollbar-thumb:hover {
+            background: #888;
+        }
+        #addressList {
+            max-height: min(45vh, 440px); /* Scalable max-height */
+        }
+
         /* Common button style */
         .action-button {
             background: rgba(255, 255, 255, 0.1);
@@ -292,6 +310,27 @@
     <!-- Main container for the map -->
     <div class="relative w-screen h-screen">
         <div id="map"></div>
+        
+        <!-- Top Left Address Panel -->
+        <div class="absolute top-[90px] left-4 z-[1001]">
+            <button id="addressToggle" class="action-button" title="Εμφάνιση λίστας διευθύνσεων">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            </button>
+        </div>
+        <div id="addressPanel" class="absolute top-[148px] left-4 z-[1000] menu-hidden glass-panel rounded-lg shadow-md p-4 w-[320px]">
+            <div class="absolute top-2 right-2 flex gap-1 z-10"> <!-- New container for buttons -->
+                <button id="addressPanelReload" class="p-1 rounded-full hover:bg-gray-400/30 transition-colors" title="Ανανέωση λίστας">
+                    <svg class="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004 12c0 2.972 1.154 5.661 3.042 7.707M20 20v-5h-.581m0 0a8.001 8.001 0 01-15.357-2A8.001 8.001 0 0120 12c0-2.972-1.154-5.661-3.042-7.707"></path></svg>
+                </button>
+                <button id="addressPanelClose" class="p-1 rounded-full hover:bg-gray-400/30 transition-colors" title="Κλείσιμο λίστας">
+                    <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <h2 class="text-lg font-bold mb-2 text-gray-800">Λίστα Διευθύνσεων</h2>
+            <div id="addressList" class="overflow-y-auto pr-2">
+                <p id="no-addresses-message" class="text-gray-500 text-sm">Προσθέστε σημεία στη διαδρομή για να δείτε τις διευθύνσεις.</p>
+            </div>
+        </div>
         
         <!-- Top Right Buttons -->
         <div class="absolute top-4 right-4 z-[2000]">
@@ -734,6 +773,9 @@
             searchSuggestions: [],
             highlightedSuggestionIndex: -1,
             isSearchLoading: false,
+            // Address Panel state
+            pinAddresses: [],
+            isAddressPanelVisible: false,
         };
 
         let rightClickLatLng = null; // Stores the latlng of the right-click event
@@ -891,6 +933,28 @@
                     removePin(rightClickedPinIndex);
                     document.getElementById('contextMenu').classList.add('hidden');
                 }
+            });
+
+            // Address Panel listeners
+            const addressToggle = document.getElementById('addressToggle');
+            const addressPanel = document.getElementById('addressPanel');
+            const addressPanelClose = document.getElementById('addressPanelClose');
+
+            addressToggle.addEventListener('click', () => {
+                state.isAddressPanelVisible = !state.isAddressPanelVisible;
+                addressPanel.classList.toggle('menu-hidden', !state.isAddressPanelVisible);
+                if (state.isAddressPanelVisible) {
+                    debouncedFetchAddresses(); // Refresh addresses when opening
+                }
+            });
+
+            addressPanelClose.addEventListener('click', () => {
+                state.isAddressPanelVisible = false;
+                addressPanel.classList.add('menu-hidden');
+            });
+
+            addressPanelReload.addEventListener('click', () => {
+                debouncedFetchAddresses(); // Force a refresh
             });
         }
 
@@ -1485,6 +1549,176 @@
             state.isSearchLoading = isLoading;
             document.getElementById('search-spinner').classList.toggle('hidden', !isLoading);
             document.getElementById('search-magnifying-glass').classList.toggle('hidden', isLoading);
+        }
+
+        // --- ADDRESS PANEL LOGIC ---
+        const debouncedFetchAddresses = debounce(fetchAllPinAddresses, 500);
+
+        // This function renders the content of the address list
+        function renderAddressList() {
+            const addressList = document.getElementById('addressList');
+            const noAddressesMessage = document.getElementById('no-addresses-message');
+            const errorMessages = ["Σφάλμα φόρτωσης", "Σφάλμα δικτύου", "Άγνωστη τοποθεσία", "Περιοχή χωρίς όνομα"];
+
+            if (state.pinAddresses.length === 0 && state.pins.length > 0) {
+                addressList.innerHTML = '<div class="flex justify-center items-center p-4"><div class="loading-spinner"></div></div>';
+                if(noAddressesMessage) noAddressesMessage.style.display = 'none';
+                return;
+            }
+
+            if (state.pins.length === 0) {
+                addressList.innerHTML = '';
+                if(noAddressesMessage) noAddressesMessage.style.display = 'block';
+                return;
+            }
+            
+            if(noAddressesMessage) noAddressesMessage.style.display = 'none';
+            addressList.innerHTML = state.pinAddresses.map((address, index) => {
+                const isError = errorMessages.includes(address) || address === "Φόρτωση...";
+                const isLoading = address === "Φόρτωση...";
+
+                const isStart = index === 0;
+                let pinClass = 'pin-icon';
+                let pinContent = index + 1;
+                if (isStart) {
+                    pinClass += ' start';
+                    if (state.isRoundTrip && state.pins.length > 1) {
+                        pinClass += ' flag';
+                        pinContent = '🏁';
+                    }
+                }
+
+                let actionButton = '';
+                if (isLoading) {
+                    actionButton = '<div class="search-spinner" style="width: 16px; height: 16px;"></div>';
+                } else if (isError) {
+                    actionButton = `<button class="p-1 rounded-full hover:bg-gray-400/30" onclick="event.stopPropagation(); retryAddress(${index});" title="Επανάληψη">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004 12c0 2.972 1.154 5.661 3.042 7.707M20 20v-5h-.581m0 0a8.001 8.001 0 01-15.357-2A8.001 8.001 0 0120 12c0-2.972-1.154-5.661-3.042-7.707"></path></svg>
+                    </button>`;
+                }
+
+                return `
+                <div class="flex items-center justify-between gap-3 p-2 rounded-md hover:bg-black/10">
+                    <div class="flex items-center gap-3 cursor-pointer min-w-0" onclick="panToPin(${index})">
+                        <div class="flex-shrink-0">
+                            <div class="${pinClass}" style="width: 28px; height: 28px; font-size: 13px; line-height: 28px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">${pinContent}</div>
+                        </div>
+                        <div class="text-sm font-medium truncate ${isError && !isLoading ? 'text-red-600' : 'text-gray-800'}" title="${address}">${address}</div>
+                    </div>
+                    <div class="flex-shrink-0">${actionButton}</div>
+                </div>
+            `}).join('');
+        }
+
+        async function retryAddress(index) {
+            if (index < 0 || index >= state.pins.length) return;
+
+            const pin = state.pins[index];
+            
+            // Show loading state for this specific item
+            state.pinAddresses[index] = "Φόρτωση...";
+            renderAddressList();
+
+            // Fetch the address
+            const address = await reverseGeocode(pin.lat, pin.lng);
+
+            // Update the state
+            state.pinAddresses[index] = address;
+
+            // Re-render the list to show the new address or error
+            renderAddressList();
+        }
+
+        async function fetchAllPinAddresses() {
+            if (state.pins.length === 0) {
+                state.pinAddresses = [];
+                renderAddressList();
+                return;
+            }
+
+            // Initialize with placeholder text
+            state.pinAddresses = Array(state.pins.length).fill("Φόρτωση...");
+            renderAddressList(); // Initial render with placeholders
+
+            for (let i = 0; i < state.pins.length; i++) {
+                const pin = state.pins[i];
+                const address = await reverseGeocode(pin.lat, pin.lng);
+                state.pinAddresses[i] = address;
+                renderAddressList(); // Re-render the list with the newly fetched address
+
+                // Wait before the next request, but not after the last one.
+                if (i < state.pins.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1100));
+                }
+            }
+        }
+
+        async function reverseGeocode(lat, lng) {
+            try {
+                const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=el`;
+                const response = await fetch(url);
+                if (!response.ok) return "Άγνωστη τοποθεσία";
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.warn("Reverse geocoding error:", data.error);
+                    return data.display_name || "Περιοχή χωρίς όνομα";
+                }
+                
+                const address = data.address;
+                if (!address) return data.display_name || "Άγνωστη τοποθεσία";
+
+                const road = address.road || '';
+                const house_number = address.house_number || '';
+                const suburb = address.suburb || '';
+                const city = address.city || address.town || address.village || '';
+
+                let line1 = `${road} ${house_number}`.trim();
+                
+                if (line1 && city && line1 !== city) {
+                     return `${line1}, ${city}`;
+                } else if (line1) {
+                    return line1;
+                } else if (suburb && city && suburb !== city) {
+                    return `${suburb}, ${city}`;
+                } else if (suburb) {
+                    return suburb;
+                } else if (city) {
+                    return city;
+                }
+
+                return data.display_name.split(',').slice(0, 2).join(',');
+
+            } catch (error) {
+                console.error("Reverse geocoding error:", error);
+                return "Σφάλμα δικτύου";
+            }
+        }
+
+        function panToPin(index) {
+            if (state.pins[index]) {
+                state.map.flyTo(state.pins[index], 16);
+                
+                // Remove highlight from previously selected marker
+                if (state.selectedMarkerIndex !== -1 && state.markers[state.selectedMarkerIndex]) {
+                    const iconOptions = state.markers[state.selectedMarkerIndex].getIcon().options;
+                    if (iconOptions.className.includes(' selected')) {
+                        iconOptions.className = iconOptions.className.replace(' selected', '');
+                        state.markers[state.selectedMarkerIndex].setIcon(L.divIcon(iconOptions));
+                    }
+                }
+                
+                state.selectedMarkerIndex = index;
+                
+                // Add highlight to the new selected marker
+                if (state.markers[index]) {
+                    const iconOptions = state.markers[index].getIcon().options;
+                    if (!iconOptions.className.includes(' selected')) {
+                        iconOptions.className += ' selected';
+                        state.markers[index].setIcon(L.divIcon(iconOptions));
+                    }
+                }
+            }
         }
 
         // --- ROUTE & ELEVATION CALCULATION ---
