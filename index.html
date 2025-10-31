@@ -383,7 +383,12 @@
                     </svg>
                     Λήψη GPX
                 </button>
-                <button id="downloadPDF" class="flex items-center justify-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors shadow-sm mt-2" style="display: none;">
+                <button id="uploadGPX" class="flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors shadow-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Φόρτωση GPX
+                </button>
+                <input type="file" id="gpx-file-input" class="hidden" accept=".gpx">
+                <button id="downloadPDF" class="flex items-center justify-center gap-2 px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600 transition-colors shadow-sm" style="display: none;">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Κατέβασε pdf διαδρομής
                 </button>
@@ -837,6 +842,8 @@
         function setupEventListeners() {
             document.getElementById('clearRoute').addEventListener('click', () => clearRoute(true));
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
+            document.getElementById('uploadGPX').addEventListener('click', () => document.getElementById('gpx-file-input').click());
+            document.getElementById('gpx-file-input').addEventListener('change', handleGpxFileUpload);
             document.getElementById('downloadPDF').addEventListener('click', downloadRoutePDF);
             document.getElementById('undoButton').addEventListener('click', undo);
             document.getElementById('shareButton').addEventListener('click', copyShareLink);
@@ -1153,6 +1160,115 @@
             }
             return false;
         }
+
+        // --- GPX Import/Export ---
+        function downloadGPX() {
+            if (state.pins.length === 0) {
+                showMessage('Δεν υπάρχουν σημεία για εξαγωγή.', 'error');
+                return;
+            }
+
+            let gpx = `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" creator="WebApp Route Planner">
+ <metadata>
+  <name>Διαδρομή από WebApp</name>
+  <time>${new Date().toISOString()}</time>
+ </metadata>
+`;
+
+            // Add waypoints (user pins)
+            state.pins.forEach((pin, index) => {
+                gpx += ` <wpt lat="${pin.lat}" lon="${pin.lng}">
+  <name>Pin ${index + 1}</name>
+ </wpt>
+`;
+            });
+
+            // Add track if a route is calculated
+            if (state.currentRoute && state.currentRoute.coordinates.length > 0) {
+                gpx += ' <trk>\n  <name>Υπολογισμένη Διαδρομή</name>\n  <trkseg>\n';
+                state.currentRoute.coordinates.forEach(coord => {
+                    gpx += `   <trkpt lat="${coord[0]}" lon="${coord[1]}"><ele>${coord[2] || 0}</ele></trkpt>\n`;
+                });
+                gpx += '  </trkseg>\n </trk>\n';
+            }
+
+            gpx += '</gpx>';
+
+            const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `route_${new Date().toISOString().split('T')[0]}.gpx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showMessage('Η λήψη του GPX ξεκίνησε.', 'success');
+        }
+
+        function handleGpxFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            if (!file.name.toLowerCase().endsWith('.gpx')) {
+                showMessage('Παρακαλώ επιλέξτε ένα αρχείο GPX (.gpx).', 'error');
+                event.target.value = ''; // Reset file input
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const gpxContent = e.target.result;
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(gpxContent, "text/xml");
+
+                    if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+                        throw new Error("Μη έγκυρη δομή GPX.");
+                    }
+
+                    // Use querySelectorAll for more robust parsing across different GPX variations
+                    const waypoints = xmlDoc.querySelectorAll('wpt');
+                    let newPins = [];
+
+                    if (waypoints.length > 0) {
+                        for (let i = 0; i < waypoints.length; i++) {
+                            const lat = waypoints[i].getAttribute('lat');
+                            const lon = waypoints[i].getAttribute('lon');
+                            if (lat && lon) {
+                                newPins.push(L.latLng(parseFloat(lat), parseFloat(lon)));
+                            }
+                        }
+                    }
+
+                    if (newPins.length === 0) {
+                        throw new Error("Δεν βρέθηκαν αποθηκευμένα pins (waypoints) στο αρχείο GPX.");
+                    }
+                    
+                    if (newPins.length > CONFIG.MAX_PINS) {
+                        showMessage(`Το αρχείο περιέχει ${newPins.length} σημεία. Φορτώθηκαν τα πρώτα ${CONFIG.MAX_PINS}.`, 'warning');
+                        newPins = newPins.slice(0, CONFIG.MAX_PINS);
+                    }
+
+                    clearRoute(false);
+                    state.pins = newPins;
+                    redrawFromState();
+                    saveState();
+                    showMessage(`Η διαδρομή από το αρχείο GPX φορτώθηκε με ${newPins.length} σημεία.`, 'success');
+
+                } catch (error) {
+                    console.error("GPX parsing error:", error);
+                    showMessage(`Σφάλμα κατά την επεξεργασία του αρχείου GPX: ${error.message}`, 'error');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
 
         // --- MAP INTERACTION ---
         function handleMapClick(e) {
@@ -2171,24 +2287,7 @@
             updateUIState();
         }
 
-        function downloadGPX() {
-            if (!state.currentRoute) {
-                showMessage('Δεν υπάρχει διαδρομή για λήψη', 'error');
-                return;
-            }
-            
-            const gpxContent = generateGPX(state.currentRoute);
-            const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
-            const url = URL.createObjectURL(blob);
-            
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `route_${new Date().toISOString().slice(0,10)}.gpx`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
+
         
         function generateGPX(route) {
             const timestamp = new Date().toISOString();
