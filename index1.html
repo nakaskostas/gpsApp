@@ -751,11 +751,11 @@
             OPENROUTE_API_KEY: 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjA4MzcyNTdiZjZkYjQxODc4YWY3Y2I4ZDA1OTVjMTI3IiwiaCI6Im11cm11cjY0In0=',
             GRAPHHOPPER_KEY: 'add98983-a73f-4f48-b753-d275ad3a3655',
             ELEVATION_API_URL: 'https://api.open-elevation.com/api/v1/lookup',            
-            MAX_PINS: 40, // Number of Pins
+            MAX_PINS: 35, // Number of Pins
             DEFAULT_CENTER: [39.663967, 20.852770], // Ioannina, Greece
             DEFAULT_ZOOM: 13,
             STEEP_GRADIENT_THRESHOLD: 5, // degrees
-            HISTORY_LIMIT: 40, // Max undo actions 
+            HISTORY_LIMIT: 35, // Max undo actions 
             avgFlatSpeed: 15 // average Flat Speed 
         };
         
@@ -1979,58 +1979,57 @@
             return elevations;
         }
         
-                function processElevationData(routeCoordinates) {
-                    let cumulativeDistance = 0;
-                    let elevationGain = 0;
-                    let elevationLoss = 0;
-                    let steepUphillDistance = 0;
-                    const elevationProfileData = [];
-                    
-                    routeCoordinates.forEach((point, index) => {
-                        const elevation = point[2];
-                        let isSteepSegment = false;
-                        if (index > 0) {
-                            const prevPoint = routeCoordinates[index - 1];
-                            const segmentDistance = calculateHaversineDistance(prevPoint, point);
-                            cumulativeDistance += segmentDistance;
-        
-                            const elevationDiff = elevation - (prevPoint[2] || 0);
-                            if (elevationDiff > 0) elevationGain += elevationDiff;
-                            else elevationLoss += Math.abs(elevationDiff);
-        
-                            if (segmentDistance > 0) {
-                                const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
-                                if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) {
-                                     steepUphillDistance += segmentDistance;
-                                     isSteepSegment = true;
-                                }
-                            }
-                        }
-                        elevationProfileData.push({ distance: cumulativeDistance, elevation: elevation, isSteep: isSteepSegment });
-                    });
-        
-                    const maxChartPoints = 300;
-                    let sampledElevationData = elevationProfileData;
-                    let sampledRouteCoords = routeCoordinates;
-        
-                    if (elevationProfileData.length > maxChartPoints) {
-                        sampledElevationData = [];
-                        sampledRouteCoords = [];
-                        const step = Math.floor(elevationProfileData.length / maxChartPoints);
-                        for (let i = 0; i < elevationProfileData.length; i += step) {
-                            sampledElevationData.push(elevationProfileData[i]);
-                            sampledRouteCoords.push(routeCoordinates[i]);
+        function processElevationData(routeCoordinates) {
+            let cumulativeDistance = 0;
+            let elevationGain = 0;
+            let elevationLoss = 0;
+            let steepUphillDistance = 0;
+            const elevationProfileData = [];
+            
+            routeCoordinates.forEach((point, index) => {
+                const elevation = point[2];
+                if (index > 0) {
+                    const prevPoint = routeCoordinates[index - 1];
+                    const segmentDistance = calculateHaversineDistance(prevPoint, point);
+                    cumulativeDistance += segmentDistance;
+
+                    const elevationDiff = elevation - (prevPoint[2] || 0);
+                    if (elevationDiff > 0) elevationGain += elevationDiff;
+                    else elevationLoss += Math.abs(elevationDiff);
+
+                    if (segmentDistance > 0) {  
+                        const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
+                        if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) {
+                             steepUphillDistance += segmentDistance;
                         }
                     }
+                }
+                elevationProfileData.push({ distance: cumulativeDistance, elevation: elevation });
+            });
+
+            const maxChartPoints = 300;
+            let sampledElevationData = elevationProfileData;
+            let sampledRouteCoords = routeCoordinates;
+
+            if (elevationProfileData.length > maxChartPoints) {
+                sampledElevationData = [];
+                sampledRouteCoords = [];
+                const step = Math.floor(elevationProfileData.length / maxChartPoints);
+                for (let i = 0; i < elevationProfileData.length; i += step) {
+                    sampledElevationData.push(elevationProfileData[i]);
+                    sampledRouteCoords.push(routeCoordinates[i]);
+                }
+            }
+
+            state.currentElevation = { data: sampledElevationData, coordinates: sampledRouteCoords };
+
+            updateRouteStats({ distance: cumulativeDistance, elevationGain, elevationLoss, steepUphillDistance });
+            displayColoredRoute(routeCoordinates);
+            displayElevationChart(sampledElevationData);
+            updateStatsVisibility(true);
+            showBottomPanel();
+        }
         
-                    state.currentElevation = { data: sampledElevationData, coordinates: sampledRouteCoords };
-        
-                    updateRouteStats({ distance: cumulativeDistance, elevationGain, elevationLoss, steepUphillDistance });
-                    displayColoredRoute(routeCoordinates);
-                    displayElevationChart(sampledElevationData);
-                    updateStatsVisibility(true);
-                    showBottomPanel();
-                }        
         // --- UI UPDATES & DISPLAY ---
         function showBottomPanel() {
             if (!state.currentRoute) return;
@@ -2145,8 +2144,24 @@
             document.getElementById('no-elevation-message').style.display = 'none';
 
             const labels = elevationData.map(d => (d.distance / 1000).toFixed(2));
-            const elevations = elevationData.map(d => d.elevation);
+            const smoothed = smoothElevation(elevationData);
+            const elevations = smoothed.map(d => d.elevation);
 
+            // Calculate gradients for each segment of the smoothed data
+            const gradients = [];
+            for (let i = 1; i < smoothed.length; i++) {
+                const p1 = smoothed[i - 1];
+                const p2 = smoothed[i];
+                const elevationDiff = p2.elevation - p1.elevation;
+                const distanceDiff = p2.distance - p1.distance;
+                if (distanceDiff > 0 && elevationDiff > 0) { // Only check for uphills
+                    const gradient = Math.atan(elevationDiff / distanceDiff) * (180 / Math.PI);
+                    gradients.push(gradient);
+                } else {
+                    gradients.push(0); // No steepness for downhills or flat sections
+                }
+            }
+            
             state.elevationChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -2155,16 +2170,18 @@
                         label: 'Υψόμετρο (m)',
                         data: elevations,
                         backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 2,
+                        borderWidth: 2.7,
                         fill: true,
                         pointRadius: 0,
                         pointHoverRadius: 5,
-                        tension: 0.1,
+                        tension: 0.6,
                         segment: {
                             borderColor: ctx => {
-                                const index = ctx.p1DataIndex; // ctx.p1DataIndex refers to the end point of the segment
-                                const point = elevationData[index];
-                                return point && point.isSteep ? '#FF0000' : '#3B82F6';
+                                const index = ctx.p0DataIndex;
+                                if (gradients[index] > CONFIG.STEEP_GRADIENT_THRESHOLD) {
+                                    return '#FF0000'; // A brighter red for steep sections
+                                }
+                                return '#3B82F6'; // Blue for normal
                             }
                         }
                     }]
@@ -2206,6 +2223,16 @@
                     }
                 }
             });
+
+            function smoothElevation(data, windowSize = 5) {
+                return data.map((_, i, arr) => {
+                    const start = Math.max(0, i - Math.floor(windowSize / 2));
+                    const end = Math.min(arr.length, i + Math.floor(windowSize / 2) + 1);
+                    const slice = arr.slice(start, end);
+                    const avgElevation = slice.reduce((sum, d) => sum + d.elevation, 0) / slice.length;
+                    return { ...arr[i], elevation: avgElevation };
+                });
+            }
 
             document.getElementById('elevationChart').addEventListener('mouseleave', () => {
                 if (state.highlightMarker) {
@@ -2365,7 +2392,7 @@
                     return;
                 }
                 const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js';
                 script.onload = () => {
                     state.isChartJsLoaded = true;
                     console.log('Chart.js loaded dynamically.');
@@ -2378,8 +2405,6 @@
                 document.head.appendChild(script);
             });
         }
-
-
 
         function showLoading(show) {
             document.getElementById('topRightLoader').classList.toggle('hidden', !show);
