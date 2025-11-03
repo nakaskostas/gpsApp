@@ -499,7 +499,7 @@
 
                 <!-- Steep Uphill -->
                 <div class="col-span-4 text-center p-2 rounded-lg shadow-md mt-4">
-                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold leading-tight">Μήκος Απότομης Ανάβασης (&gt;5°)</div>
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold leading-tight">Μήκος Απότομης Ανάβασης (&gt;5%)</div>
                     <div id="steepUphillDistance" class="font-bold text-2xl text-red-600 mt-1">--</div>
                 </div>
                 <!-- Elevation Gain & Loss -->
@@ -564,7 +564,7 @@
                 const elevationDiff = p2[2] - p1[2];
                 let gradient = 0;
                 if (segmentDistance > 0) {
-                    gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
+                    gradient = elevationDiff / segmentDistance;
                 }
                 
                 const isSteep = gradient > CONFIG.STEEP_GRADIENT_THRESHOLD;
@@ -670,7 +670,7 @@
                     <div style="display: table-row; border-bottom: 1px solid #ccc; page-break-inside: avoid !important;">
                         <div style="display: table-cell; padding: 12px; text-align: center;">${seg.startKm} km</div>
                         <div style="display: table-cell; padding: 12px; text-align: center;">${seg.endKm} km</div>
-                        <div style="display: table-cell; padding: 12px; text-align: center; ${gradientStyle}">${seg.gradient}°</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center; ${gradientStyle}">${(seg.gradient * 100).toFixed(1)}%</div>
                         <div style="display: table-cell; padding: 12px; text-align: center;">${steepLengthText}</div>
                     </div>
                 `;
@@ -681,7 +681,7 @@
             tableHtml += `
                 <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 15px;">
                     <div style="display: table-row;">
-                        <div style="display: table-cell; padding: 12px; text-align: left; font-weight: bold; width: 60%;">Συνολικό Μήκος Απότομης Ανάβασης (>5°):</div>
+                        <div style="display: table-cell; padding: 12px; text-align: left; font-weight: bold; width: 60%;">Συνολικό Μήκος Απότομης Ανάβασης (>5%):</div>
                         <div style="display: table-cell; padding: 12px; text-align: center; font-weight: bold; color: red; width: 40%;">${formatDistance(totalSteepDistance)}</div>
                     </div>
                 </div>
@@ -694,7 +694,7 @@
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Εκτιμώμενη Διάρκεια:</td><td style="padding: 8px;">${estimatedDuration}</td></tr>
-                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Μήκος Απότομης Ανάβασης (>5°):</td><td style="padding: 8px;">${steepUphillDistance}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Μήκος Απότομης Ανάβασης (>5%):</td><td style="padding: 8px;">${steepUphillDistance}</td></tr>
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Θετική Υψομετρική:</td><td style="padding: 8px;">${elevationGain}</td></tr>
                     <tr><td style="padding: 8px; font-weight: bold;">Αρνητική Υψομετρική:</td><td style="padding: 8px;">${elevationLoss}</td></tr>
                 </table>
@@ -754,7 +754,7 @@
             MAX_PINS: 40, // Number of Pins
             DEFAULT_CENTER: [39.663967, 20.852770], // Ioannina, Greece
             DEFAULT_ZOOM: 13,
-            STEEP_GRADIENT_THRESHOLD: 5, // degrees
+            STEEP_GRADIENT_THRESHOLD: 0.05, // percentage
             HISTORY_LIMIT: 40, // Max undo actions 
             avgFlatSpeed: 15 // average Flat Speed 
         };
@@ -985,7 +985,7 @@
 
             createTooltipFor(
                 document.querySelector('#steepUphillToggle').closest('label'),
-                'Δείχνει με κόκκινο χρώμα τις απότομες ανηφόρες (>5°) στον χάρτη.'
+                'Δείχνει με κόκκινο χρώμα τις απότομες ανηφόρες (>5%) στον χάρτη.'
             );
         }
 
@@ -1998,11 +1998,14 @@
                             if (elevationDiff > 0) elevationGain += elevationDiff;
                             else elevationLoss += Math.abs(elevationDiff);
         
+                            // Check for steep uphill slope
                             if (segmentDistance > 0) {
-                                const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
+                                const gradient = elevationDiff / segmentDistance;
                                 if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) {
-                                     steepUphillDistance += segmentDistance;
-                                     isSteepSegment = true;
+                                    isSteepSegment = true;
+                                    if (elevationDiff > 0) { // Only count uphill steep segments
+                                        steepUphillDistance += segmentDistance;
+                                    }
                                 }
                             }
                         }
@@ -2069,7 +2072,7 @@
                     let isSteep = false;
 
                     if (segmentDistance > 0) {
-                        const gradient = Math.atan(elevationDiff / segmentDistance) * (180 / Math.PI);
+                        const gradient = elevationDiff / segmentDistance;
                         if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
                     }
 
