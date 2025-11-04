@@ -718,6 +718,7 @@
                 document.querySelector('.leaflet-control-container')
             ];
             const originalDisplays = new Map();
+            const bottomPanel = document.getElementById('bottomPanel');
 
             try {
                 // --- Part 1: Generate Report PDF ---
@@ -760,6 +761,12 @@
                         el.style.display = 'none';
                     }
                 });
+                
+                if (bottomPanel) {
+                    bottomPanel.style.background = 'rgba(255, 255, 255, 0.9)';
+                    bottomPanel.style.backdropFilter = 'none';
+                    bottomPanel.style.webkitBackdropFilter = 'none';
+                }
 
                 await new Promise(resolve => setTimeout(resolve, 250));
 
@@ -774,10 +781,37 @@
                     }
                 });
 
+                // --- Part 3: Add screenshot to PDF with correct aspect ratio ---
+                const image = new Image();
+                image.src = mapImageData;
+                await new Promise(resolve => { image.onload = resolve; });
+
+                const imageWidth = image.width;
+                const imageHeight = image.height;
+                const imageAspectRatio = imageWidth / imageHeight;
+
                 pdf.addPage('a4', 'landscape');
-                const pdfLandscapeWidth = pdf.internal.pageSize.getWidth();
-                const pdfLandscapeHeight = pdf.internal.pageSize.getHeight();
-                pdf.addImage(mapImageData, 'PNG', 0, 0, pdfLandscapeWidth, pdfLandscapeHeight);
+                const pageW = pdf.internal.pageSize.getWidth();
+                const pageH = pdf.internal.pageSize.getHeight();
+                const pageAspectRatio = pageW / pageH;
+
+                let finalImgW, finalImgH, posX, posY;
+
+                if (imageAspectRatio > pageAspectRatio) {
+                    // Image is wider than the page, so width is the constraint
+                    finalImgW = pageW;
+                    finalImgH = pageW / imageAspectRatio;
+                    posX = 0;
+                    posY = (pageH - finalImgH) / 2; // Center vertically
+                } else {
+                    // Image is taller than the page, so height is the constraint
+                    finalImgH = pageH;
+                    finalImgW = pageH * imageAspectRatio;
+                    posX = (pageW - finalImgW) / 2; // Center horizontally
+                    posY = 0;
+                }
+
+                pdf.addImage(mapImageData, 'PNG', posX, posY, finalImgW, finalImgH);
 
                 pdf.save('route-report.pdf');
             } catch (error) {
@@ -788,6 +822,13 @@
                 originalDisplays.forEach((display, el) => {
                     if(el) el.style.display = display;
                 });
+                
+                if (bottomPanel) {
+                    bottomPanel.style.background = '';
+                    bottomPanel.style.backdropFilter = '';
+                    bottomPanel.style.webkitBackdropFilter = '';
+                }
+
                 showLoading(false);
             }
         }
