@@ -540,6 +540,7 @@
     <!-- PDF Generation Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
     
     <script>
         // --- PDF GENERATION ---
@@ -618,14 +619,15 @@
                 showMessage('Δεν υπάρχει διαδρομή για λήψη', 'error');
                 return;
             }
-            if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined') {
-                showMessage('Οι βιβλιοθήκες PDF δεν έχουν φορτωθεί. Δοκιμάστε ξανά.', 'error');
+            if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined' || typeof htmlToImage === 'undefined') {
+                showMessage('Οι βιβλιοθήκες PDF ή εικόνας δεν έχουν φορτωθεί. Δοκιμάστε ξανά.', 'error');
                 return;
             }
 
             showLoading(true);
 
             const reportElement = document.createElement('div');
+            reportElement.id = 'pdf-report-generator'; // Add an ID for filtering
             reportElement.style.position = 'absolute';
             reportElement.style.left = '-9999px';
             reportElement.style.width = '700px';
@@ -703,7 +705,22 @@
             `;
             document.body.appendChild(reportElement);
 
+            const elementsToHide = [
+                document.getElementById('menuPanel'),
+                document.getElementById('topRightControls'),
+                document.getElementById('addressToggle'),
+                document.getElementById('addressPanel'),
+                document.getElementById('instructions'),
+                document.getElementById('messageOverlay'),
+                document.getElementById('contextMenu'),
+                document.getElementById('hide-panel-button'), // The one on the bottom panel
+                document.getElementById('show-panel-button'),
+                document.querySelector('.leaflet-control-container')
+            ];
+            const originalDisplays = new Map();
+
             try {
+                // --- Part 1: Generate Report PDF ---
                 const canvas = await html2canvas(reportElement, { scale: 2 });
                 const imgData = canvas.toDataURL('image/png');
                 const { jsPDF } = jspdf;
@@ -735,12 +752,42 @@
                     pdf.rect(0, pdfHeight - margin, pdfWidth, margin, 'F');
                     heightLeft -= pageContentHeight;
                 }
+
+                // --- Part 2: Generate Map Screenshot ---
+                elementsToHide.forEach(el => {
+                    if (el) {
+                        originalDisplays.set(el, el.style.display);
+                        el.style.display = 'none';
+                    }
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 250));
+
+                const mapImageData = await htmlToImage.toPng(document.body, {
+                    quality: 0.95,
+                    pixelRatio: 1.5,
+                    filter: (node) => {
+                        if (node.tagName === 'SCRIPT' || node.id === 'pdf-report-generator') {
+                            return false;
+                        }
+                        return true;
+                    }
+                });
+
+                pdf.addPage('a4', 'landscape');
+                const pdfLandscapeWidth = pdf.internal.pageSize.getWidth();
+                const pdfLandscapeHeight = pdf.internal.pageSize.getHeight();
+                pdf.addImage(mapImageData, 'PNG', 0, 0, pdfLandscapeWidth, pdfLandscapeHeight);
+
                 pdf.save('route-report.pdf');
             } catch (error) {
                 console.error("PDF generation failed:", error);
                 showMessage('Η δημιουργία του PDF απέτυχε.', 'error');
             } finally {
                 document.body.removeChild(reportElement);
+                originalDisplays.forEach((display, el) => {
+                    if(el) el.style.display = display;
+                });
                 showLoading(false);
             }
         }
