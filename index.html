@@ -614,6 +614,103 @@
             }).filter(seg => seg !== null);
         }
 
+        // Helper to generate the HTML for the main statistics part of the report.
+        function getPdfStatsHtml() {
+            const totalDistance = document.getElementById('totalDistance').textContent;
+            const estimatedDuration = document.getElementById('estimatedDuration').textContent;
+            const steepUphillDistance = document.getElementById('steepUphillDistance').textContent;
+            const elevationGain = document.getElementById('elevationGain').textContent;
+            const elevationLoss = document.getElementById('elevationLoss').textContent;
+
+            return `
+                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής</h1>
+                <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px; text-align: center;">Στατιστικά</h2>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Εκτιμώμενη Διάρκεια:</td><td style="padding: 8px;">${estimatedDuration}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Μήκος Απότομης Ανάβασης (>5%):</td><td style="padding: 8px;">${steepUphillDistance}</td></tr>
+                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Θετική Υψομετρική:</td><td style="padding: 8px;">${elevationGain}</td></tr>
+                    <tr><td style="padding: 8px; font-weight: bold;">Αρνητική Υψομετρική:</td><td style="padding: 8px;">${elevationLoss}</td></tr>
+                </table>
+            `;
+        }
+
+        // Helper to generate the HTML for a chunk of the slope analysis table.
+        function getPdfSlopeTableHtml(segments, totalSteepDistance, isFirstPage) {
+            const formatDistance = (d) => d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`;
+            
+            let tableRowsHtml = segments.map(seg => {
+                const gradientStyle = seg.isSteep ? 'color: red;' : '';
+                let steepLengthText = '-';
+                if (seg.isSteep) {
+                    steepLengthText = `<span style="color: red;">${formatDistance(seg.distance)}</span>`;
+                }
+                return `
+                    <div style="display: table-row; border-bottom: 1px solid #ccc;">
+                        <div style="display: table-cell; padding: 12px; text-align: center;">${seg.startKm} km</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center;">${seg.endKm} km</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center; ${gradientStyle}">${(seg.gradient * 100).toFixed(1)}%</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center;">${steepLengthText}</div>
+                    </div>
+                `;
+            }).join('');
+
+            const title = isFirstPage ? 'Ανάλυση Κλίσεων' : 'Ανάλυση Κλίσεων (συνέχεια)';
+
+            let fullTableHtml = `
+                <h2 style="font-size: 20px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; text-align: center;">${title}</h2>
+                <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                    <div style="display: table-header-group; font-weight: bold; break-inside: avoid;">
+                        <div style="display: table-row; border-bottom: 2px solid #555;">
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Από</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Έως</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Κλίση</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 40%;">Μήκος Απότομης Ανάβασης</div>
+                        </div>
+                    </div>
+                    <div style="display: table-row-group;">
+                        ${tableRowsHtml}
+                    </div>
+                </div>
+            `;
+
+            // Add total steep distance only on the last page
+            if (totalSteepDistance !== null) {
+                fullTableHtml += `
+                    <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 15px; break-inside: avoid;">
+                        <div style="display: table-row;">
+                            <div style="display: table-cell; padding: 12px; text-align: left; font-weight: bold; width: 60%;">Συνολικό Μήκος Απότομης Ανάβασης (>5%):</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; font-weight: bold; color: red; width: 40%;">${formatDistance(totalSteepDistance)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return fullTableHtml;
+        }
+
+        // Helper to measure the pixel height of the table header and a sample row.
+        async function measurePdfElements(reportElement, sampleSegment) {
+            const canvasScale = 2;
+            
+            // 1. Measure Header
+            const headerHtml = getPdfSlopeTableHtml([], null, true);
+            reportElement.innerHTML = headerHtml;
+            const headerCanvas = await html2canvas(reportElement, { scale: canvasScale });
+            const headerHeight = headerCanvas.height;
+
+            // 2. Measure Header + One Row
+            const tableWithOneRowHtml = getPdfSlopeTableHtml([sampleSegment], null, true);
+            reportElement.innerHTML = tableWithOneRowHtml;
+            const combinedCanvas = await html2canvas(reportElement, { scale: canvasScale });
+            const combinedHeight = combinedCanvas.height;
+
+            // 3. Calculate Row Height
+            const rowHeight = combinedHeight - headerHeight;
+
+            return { headerHeight, rowHeight };
+        }
+
         async function downloadRoutePDF() {
             if (!state.currentRoute) {
                 showMessage('Δεν υπάρχει διαδρομή για λήψη', 'error');
@@ -626,83 +723,25 @@
 
             showLoading(true);
 
+            // --- Setup ---
+            const { jsPDF } = jspdf;
+            const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const margin = 10;
+            const contentWidthMM = pdfWidth - margin * 2;
+            const contentHeightMM = pdfHeight - margin * 2;
+            const canvasScale = 2;
+
             const reportElement = document.createElement('div');
-            reportElement.id = 'pdf-report-generator'; // Add an ID for filtering
+            reportElement.id = 'pdf-report-generator';
             reportElement.style.position = 'absolute';
             reportElement.style.left = '-9999px';
-            reportElement.style.width = '700px';
+            reportElement.style.width = '800px'; // Use a fixed, high-res width
             reportElement.style.padding = '20px';
             reportElement.style.fontFamily = 'Arial, sans-serif';
             reportElement.style.color = '#000';
             reportElement.style.backgroundColor = '#fff';
-
-            const totalDistance = document.getElementById('totalDistance').textContent;
-            const estimatedDuration = document.getElementById('estimatedDuration').textContent;
-            const steepUphillDistance = document.getElementById('steepUphillDistance').textContent;
-            const elevationGain = document.getElementById('elevationGain').textContent;
-            const elevationLoss = document.getElementById('elevationLoss').textContent;
-
-            const segments = generateSteepnessReport(state.currentRoute.coordinates);
-            let totalSteepDistance = 0;
-
-            const formatDistance = (d) => d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`;
-
-            let tableHtml = `
-                <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
-                    <div style="display: table-header-group; font-weight: bold;">
-                        <div style="display: table-row; border-bottom: 2px solid #555;">
-                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Από</div>
-                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Έως</div>
-                            <div style="display: table-cell; padding: 12px; text-align: center; width: 20%;">Κλίση</div>
-                            <div style="display: table-cell; padding: 12px; text-align: center; width: 40%;">Μήκος Απότομης Ανάβασης</div>
-                        </div>
-                    </div>
-                    <div style="display: table-row-group;">
-            `;
-
-            segments.forEach(seg => {
-                const gradientStyle = seg.isSteep ? 'color: red;' : '';
-                let steepLengthText = '-';
-                if (seg.isSteep) {
-                    steepLengthText = `<span style="color: red;">${formatDistance(seg.distance)}</span>`;
-                    totalSteepDistance += seg.distance;
-                }
-
-                tableHtml += `
-                    <div style="display: table-row; border-bottom: 1px solid #ccc; page-break-inside: avoid !important;">
-                        <div style="display: table-cell; padding: 12px; text-align: center;">${seg.startKm} km</div>
-                        <div style="display: table-cell; padding: 12px; text-align: center;">${seg.endKm} km</div>
-                        <div style="display: table-cell; padding: 12px; text-align: center; ${gradientStyle}">${(seg.gradient * 100).toFixed(1)}%</div>
-                        <div style="display: table-cell; padding: 12px; text-align: center;">${steepLengthText}</div>
-                    </div>
-                `;
-            });
-
-            tableHtml += `</div></div>`;
-            
-            tableHtml += `
-                <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 15px;">
-                    <div style="display: table-row;">
-                        <div style="display: table-cell; padding: 12px; text-align: left; font-weight: bold; width: 60%;">Συνολικό Μήκος Απότομης Ανάβασης (>5%):</div>
-                        <div style="display: table-cell; padding: 12px; text-align: center; font-weight: bold; color: red; width: 40%;">${formatDistance(totalSteepDistance)}</div>
-                    </div>
-                </div>
-            `;
-
-
-            reportElement.innerHTML = `
-                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής</h1>
-                <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px; text-align: center;">Στατιστικά</h2>
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
-                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
-                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Εκτιμώμενη Διάρκεια:</td><td style="padding: 8px;">${estimatedDuration}</td></tr>
-                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Μήκος Απότομης Ανάβασης (>5%):</td><td style="padding: 8px;">${steepUphillDistance}</td></tr>
-                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Θετική Υψομετρική:</td><td style="padding: 8px;">${elevationGain}</td></tr>
-                    <tr><td style="padding: 8px; font-weight: bold;">Αρνητική Υψομετρική:</td><td style="padding: 8px;">${elevationLoss}</td></tr>
-                </table>
-                <h2 style="font-size: 20px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; text-align: center;">Ανάλυση Κλίσεων</h2>
-                ${tableHtml}
-            `;
             document.body.appendChild(reportElement);
 
             const elementsToHide = [
@@ -713,7 +752,7 @@
                 document.getElementById('instructions'),
                 document.getElementById('messageOverlay'),
                 document.getElementById('contextMenu'),
-                document.getElementById('hide-panel-button'), // The one on the bottom panel
+                document.getElementById('hide-panel-button'),
                 document.getElementById('show-panel-button'),
                 document.querySelector('.leaflet-control-container')
             ];
@@ -721,40 +760,51 @@
             const bottomPanel = document.getElementById('bottomPanel');
 
             try {
-                // --- Part 1: Generate Report PDF ---
-                const canvas = await html2canvas(reportElement, { scale: 2 });
-                const imgData = canvas.toDataURL('image/png');
-                const { jsPDF } = jspdf;
-                const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-                
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = pdf.internal.pageSize.getHeight();
-                const margin = 10;
+                // --- Page 1: Stats ---
+                reportElement.innerHTML = getPdfStatsHtml();
+                const statsCanvas = await html2canvas(reportElement, { scale: canvasScale });
+                const statsImgData = statsCanvas.toDataURL('image/png');
+                const statsImgHeight = statsCanvas.height * contentWidthMM / statsCanvas.width;
+                pdf.addImage(statsImgData, 'PNG', margin, margin, contentWidthMM, statsImgHeight);
 
-                const imgWidth = pdfWidth;
-                const imgHeight = canvas.height * imgWidth / canvas.width;
-                
-                let heightLeft = imgHeight;
-                let position = 0;
-                const pageContentHeight = pdfHeight - margin * 2;
+                // --- Pages 2...N: Slope Analysis Table ---
+                const segments = generateSteepnessReport(state.currentRoute.coordinates);
+                if (segments.length > 0) {
+                    const totalSteepDistance = segments.reduce((total, seg) => total + (seg.isSteep ? seg.distance : 0), 0);
 
-                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-                pdf.setFillColor(255, 255, 255);
-                pdf.rect(0, 0, pdfWidth, margin, 'F');
-                pdf.rect(0, pdfHeight - margin, pdfWidth, margin, 'F');
-                heightLeft -= pageContentHeight;
+                    // 1. Measure
+                    const { headerHeight, rowHeight } = await measurePdfElements(reportElement, segments[0]);
+                    
+                    // 2. Calculate rows per page
+                    const pageCanvasHeight = reportElement.offsetWidth * canvasScale * (pdfHeight / pdfWidth);
+                    const contentCanvasHeight = pageCanvasHeight - (margin * 2 * (pageCanvasHeight / pdfHeight));
+                    
+                    let rowsPerPage = Math.floor((contentCanvasHeight - headerHeight) / rowHeight);
+                    if (rowsPerPage <= 0) rowsPerPage = 1;
 
-                while (heightLeft > 0) {
-                    position -= pageContentHeight;
-                    pdf.addPage();
-                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                    pdf.setFillColor(255, 255, 255);
-                    pdf.rect(0, 0, pdfWidth, margin, 'F');
-                    pdf.rect(0, pdfHeight - margin, pdfWidth, margin, 'F');
-                    heightLeft -= pageContentHeight;
+                    // 3. Chunk segments
+                    const chunks = [];
+                    for (let i = 0; i < segments.length; i += rowsPerPage) {
+                        chunks.push(segments.slice(i, i + rowsPerPage));
+                    }
+
+                    // 4. Render each chunk to a new page
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunk = chunks[i];
+                        const isLastChunk = i === chunks.length - 1;
+                        const tableHtml = getPdfSlopeTableHtml(chunk, isLastChunk ? totalSteepDistance : null, i === 0);
+                        
+                        reportElement.innerHTML = tableHtml;
+                        const tableCanvas = await html2canvas(reportElement, { scale: canvasScale });
+                        const tableImgData = tableCanvas.toDataURL('image/png');
+                        const tableImgHeight = tableCanvas.height * contentWidthMM / tableCanvas.width;
+                        
+                        pdf.addPage();
+                        pdf.addImage(tableImgData, 'PNG', margin, margin, contentWidthMM, tableImgHeight);
+                    }
                 }
 
-                // --- Part 2: Generate Map Screenshot ---
+                // --- Final Page: Map Screenshot ---
                 elementsToHide.forEach(el => {
                     if (el) {
                         originalDisplays.set(el, el.style.display);
@@ -773,47 +823,36 @@
                 const mapImageData = await htmlToImage.toPng(document.body, {
                     quality: 0.95,
                     pixelRatio: 1.5,
-                    filter: (node) => {
-                        if (node.tagName === 'SCRIPT' || node.id === 'pdf-report-generator') {
-                            return false;
-                        }
-                        return true;
-                    }
+                    filter: (node) => node.id !== 'pdf-report-generator'
                 });
 
-                // --- Part 3: Add screenshot to PDF with correct aspect ratio ---
                 const image = new Image();
                 image.src = mapImageData;
                 await new Promise(resolve => { image.onload = resolve; });
-
-                const imageWidth = image.width;
-                const imageHeight = image.height;
-                const imageAspectRatio = imageWidth / imageHeight;
 
                 pdf.addPage('a4', 'landscape');
                 const pageW = pdf.internal.pageSize.getWidth();
                 const pageH = pdf.internal.pageSize.getHeight();
                 const pageAspectRatio = pageW / pageH;
+                const imageAspectRatio = image.width / image.height;
 
                 let finalImgW, finalImgH, posX, posY;
-
                 if (imageAspectRatio > pageAspectRatio) {
-                    // Image is wider than the page, so width is the constraint
                     finalImgW = pageW;
                     finalImgH = pageW / imageAspectRatio;
                     posX = 0;
-                    posY = (pageH - finalImgH) / 2; // Center vertically
+                    posY = (pageH - finalImgH) / 2;
                 } else {
-                    // Image is taller than the page, so height is the constraint
                     finalImgH = pageH;
                     finalImgW = pageH * imageAspectRatio;
-                    posX = (pageW - finalImgW) / 2; // Center horizontally
+                    posX = (pageW - finalImgW) / 2;
                     posY = 0;
                 }
 
                 pdf.addImage(mapImageData, 'PNG', posX, posY, finalImgW, finalImgH);
 
                 pdf.save('route-report.pdf');
+
             } catch (error) {
                 console.error("PDF generation failed:", error);
                 showMessage('Η δημιουργία του PDF απέτυχε.', 'error');
@@ -832,6 +871,7 @@
                 showLoading(false);
             }
         }
+
 
         // --- CONFIGURATION ---
         // --- CONFIGURATION ---
