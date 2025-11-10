@@ -167,17 +167,17 @@
         }
 
         #bottomPanel {
-            height: 50vh; /* Default height for mobile */
+            height: 45vh; /* Default height for mobile */
             border-top-width: 1px; /* Keep only top border */
             border-left-width: 0; border-right-width: 0; border-bottom-width: 0;
             transform: translateY(100%);
             transition: transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-            box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 -4px 30px rgba(0,0,0,0.1);
         }
         
         @media (min-width: 1024px) {
             #bottomPanel {
-                height: 35vh;
+                height: 25vh;
             }
         }
         
@@ -487,29 +487,20 @@
             <h2 class="text-lg font-bold mb-4 text-gray-800 text-center">Στατιστικά Διαδρομής</h2>
             <div id="stats-content" class="grid grid-cols-4 gap-3">
                 <!-- Total Distance -->
-                    <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
+                <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
                     <div id="totalDistance" class="font-bold text-3xl text-blue-600 mt-1">--</div>
                 </div>
-                <!-- Estimated Duration -->
-                <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
-                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Εκτιμώμενη Διάρκεια</div>
-                    <div id="estimatedDuration" class="font-bold text-3xl text-purple-600 mt-1 cursor-help">--</div>
-                </div>
-
+                
                 <!-- Steep Uphill -->
-                <div class="col-span-4 text-center p-2 rounded-lg shadow-md mt-4">
+                <div class="col-span-4 text-center p-2 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold leading-tight">Μήκος Απότομης Ανάβασης (&gt;5%)</div>
                     <div id="steepUphillDistance" class="font-bold text-2xl text-red-600 mt-1">--</div>
                 </div>
-                <!-- Elevation Gain & Loss -->
-                <div class="col-span-2 text-center p-2 rounded-lg shadow-md">
+                <!-- Elevation Gain -->
+                <div class="col-span-4 text-center p-2 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Θετική Υψομετρική</div>
                     <div id="elevationGain" class="font-bold text-2xl text-green-600 mt-1">--</div>
-                </div>
-                <div class="col-span-2 text-center p-2 rounded-lg shadow-md">
-                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Αρνητική Υψομετρική</div>
-                    <div id="elevationLoss" class="font-bold text-2xl text-orange-500 mt-1">--</div>
                 </div>
             </div>
              <div id="no-stats-message" class="flex items-center justify-center h-full text-gray-500">
@@ -617,20 +608,16 @@
         // Helper to generate the HTML for the main statistics part of the report.
         function getPdfStatsHtml() {
             const totalDistance = document.getElementById('totalDistance').textContent;
-            const estimatedDuration = document.getElementById('estimatedDuration').textContent;
             const steepUphillDistance = document.getElementById('steepUphillDistance').textContent;
             const elevationGain = document.getElementById('elevationGain').textContent;
-            const elevationLoss = document.getElementById('elevationLoss').textContent;
 
             return `
                 <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής</h1>
                 <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px; text-align: center;">Στατιστικά</h2>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
-                    <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Εκτιμώμενη Διάρκεια:</td><td style="padding: 8px;">${estimatedDuration}</td></tr>
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Μήκος Απότομης Ανάβασης (>5%):</td><td style="padding: 8px;">${steepUphillDistance}</td></tr>
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Θετική Υψομετρική:</td><td style="padding: 8px;">${elevationGain}</td></tr>
-                    <tr><td style="padding: 8px; font-weight: bold;">Αρνητική Υψομετρική:</td><td style="padding: 8px;">${elevationLoss}</td></tr>
                 </table>
             `;
         }
@@ -884,7 +871,6 @@
             DEFAULT_ZOOM: 13,
             STEEP_GRADIENT_THRESHOLD: 0.05, // percentage
             HISTORY_LIMIT: 40, // Max undo actions 
-            avgFlatSpeed: 15 // average Flat Speed 
         };
         
         // --- GLOBAL STATE ---
@@ -1099,13 +1085,6 @@
 
         // --- GENERIC TOOLTIP CREATION ---
         function setupTooltips() {
-            createTooltipFor(
-                document.getElementById('estimatedDuration'),
-                `<strong>Τρόπος Υπολογισμού:</strong><br>
-                 • Μέση ταχύτητα σε επίπεδο: ${CONFIG.avgFlatSpeed || 15} km/h<br>
-                 • Πρόσθετος χρόνος για ανάβαση: 1 λεπτό ανά 10 μέτρα υψομετρικής διαφοράς`
-            );
-
             createTooltipFor(
                 document.querySelector('#roundTripToggle').closest('label'),
                 'Ανοίγοντάς το, η διαδρομή σας γυρίζει αυτόματα πίσω στο σημείο εκκίνησης.'
@@ -2114,379 +2093,351 @@
             return elevations;
         }
         
-                function processElevationData(routeCoordinates) {
-                    let cumulativeDistance = 0;
-                    let elevationGain = 0;
-                    let elevationLoss = 0;
-                    let steepUphillDistance = 0;
-                    const elevationProfileData = [];
-                    
-                    routeCoordinates.forEach((point, index) => {
-                        const elevation = point[2];
-                        let isSteepSegment = false;
-                        if (index > 0) {
-                            const prevPoint = routeCoordinates[index - 1];
-                            const segmentDistance = calculateHaversineDistance(prevPoint, point);
-                            cumulativeDistance += segmentDistance;
-        
-                            const elevationDiff = elevation - (prevPoint[2] || 0);
-                            if (elevationDiff > 0) elevationGain += elevationDiff;
-                            else elevationLoss += Math.abs(elevationDiff);
-        
-                            // Check for steep uphill slope
-                            if (segmentDistance > 0) {
-                                const gradient = elevationDiff / segmentDistance;
-                                if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) {
-                                    isSteepSegment = true;
-                                    if (elevationDiff > 0) { // Only count uphill steep segments
-                                        steepUphillDistance += segmentDistance;
+                        function processElevationData(routeCoordinates) {
+                            let cumulativeDistance = 0;
+                            let elevationGain = 0;
+                            let steepUphillDistance = 0;
+                            const elevationProfileData = [];
+                            
+                            routeCoordinates.forEach((point, index) => {
+                                const elevation = point[2];
+                                let isSteepSegment = false;
+                                if (index > 0) {
+                                    const prevPoint = routeCoordinates[index - 1];
+                                    const segmentDistance = calculateHaversineDistance(prevPoint, point);
+                                    cumulativeDistance += segmentDistance;
+                
+                                    const elevationDiff = elevation - (prevPoint[2] || 0);
+                                    if (elevationDiff > 0) elevationGain += elevationDiff;
+                
+                                    // Check for steep uphill slope
+                                    if (segmentDistance > 0) {
+                                        const gradient = elevationDiff / segmentDistance;
+                                        if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) {
+                                            isSteepSegment = true;
+                                            if (elevationDiff > 0) { // Only count uphill steep segments
+                                                steepUphillDistance += segmentDistance;
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        }
-                        elevationProfileData.push({ distance: cumulativeDistance, elevation: elevation, isSteep: isSteepSegment });
-                    });
-        
-                    const maxChartPoints = 300;
-                    let sampledElevationData = elevationProfileData;
-                    let sampledRouteCoords = routeCoordinates;
-        
-                    if (elevationProfileData.length > maxChartPoints) {
-                        sampledElevationData = [];
-                        sampledRouteCoords = [];
-                        const step = Math.floor(elevationProfileData.length / maxChartPoints);
-                        for (let i = 0; i < elevationProfileData.length; i += step) {
-                            sampledElevationData.push(elevationProfileData[i]);
-                            sampledRouteCoords.push(routeCoordinates[i]);
-                        }
-                    }
-        
-                    state.currentElevation = { data: sampledElevationData, coordinates: sampledRouteCoords };
-        
-                    updateRouteStats({ distance: cumulativeDistance, elevationGain, elevationLoss, steepUphillDistance });
-                    displayColoredRoute(routeCoordinates);
-                    displayElevationChart(sampledElevationData);
-                    updateStatsVisibility(true);
-                    showBottomPanel();
-                }        
-        // --- UI UPDATES & DISPLAY ---
-        function showBottomPanel() {
-            if (!state.currentRoute) return;
-            bottomPanel.classList.add('is-visible');
-            showPanelButton.classList.add('hidden');
-        }
-
-        function hideBottomPanel() {
-            bottomPanel.classList.remove('is-visible');
-            if (state.currentRoute) {
-                showPanelButton.classList.remove('hidden');
-            }
-        }
-
-        function displayColoredRoute(routeCoordinates) {
-            state.routePolylines.forEach(p => state.map.removeLayer(p));
-            state.routeArrows.forEach(a => state.map.removeLayer(a));
-            state.routePolylines = [];
-            state.routeArrows = [];
-
-            if (state.polylineDecorator) {
-                state.map.removeLayer(state.polylineDecorator);
-                state.polylineDecorator = null;
-            }
-
-            if (state.showSteepHighlight) {
-                let currentSegment = [];
-                let isCurrentSegmentSteep = false;
-                let allSegments = [];
-
-                for (let i = 1; i < routeCoordinates.length; i++) {
-                    const startPoint = routeCoordinates[i - 1];
-                    const endPoint = routeCoordinates[i];
-                    const segmentDistance = calculateHaversineDistance(startPoint, endPoint);
-                    const elevationDiff = endPoint[2] - startPoint[2];
-                    let isSteep = false;
-
-                    if (segmentDistance > 0) {
-                        const gradient = elevationDiff / segmentDistance;
-                        if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
-                    }
-
-                    if (i === 1) {
-                        currentSegment.push([startPoint[0], startPoint[1]]);
-                        isCurrentSegmentSteep = isSteep;
-                    }
-
-                    if (isSteep !== isCurrentSegmentSteep) {
-                        currentSegment.push([endPoint[0], endPoint[1]]);
-                        allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
-                        currentSegment = [[endPoint[0], endPoint[1]]];
-                        isCurrentSegmentSteep = isSteep;
-                    } else {
-                        currentSegment.push([endPoint[0], endPoint[1]]);
-                    }
-                }
-
-                if (currentSegment.length > 1) {
-                    allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
-                }
-
-                allSegments.forEach(segment => {
-                    const polyline = L.polyline(segment.coords, {
-                        color: segment.isSteep ? '#FF0000' : '#3B82F6', weight: 5, opacity: 0.85
-                    }).addTo(state.map);
-                    state.routePolylines.push(polyline);
-                });
-            } else {
-                const fullRouteCoords = routeCoordinates.map(c => [c[0], c[1]]);
-                const polyline = L.polyline(fullRouteCoords, {
-                    color: '#3B82F6', weight: 5, opacity: 0.85
-                }).addTo(state.map);
-                state.routePolylines.push(polyline);
-            }
-
-            const fullPolyline = L.polyline(routeCoordinates.map(c => [c[0], c[1]]), { color: 'transparent' }).addTo(state.map);
-            state.routePolylines.push(fullPolyline);
-
-            state.polylineDecorator = L.polylineDecorator(fullPolyline, {
-                patterns: [{
-                    offset: '10%', repeat: '400px',
-                    symbol: L.Symbol.arrowHead({ pixelSize: 6, polygon: false, pathOptions: { stroke: true, weight: 1.5, color: '#000000', opacity: 0.9 } })
-                }]
-            }).addTo(state.map);
-            state.routeArrows.push(state.polylineDecorator);
-
-            const group = new L.featureGroup([...state.routePolylines, ...state.markers]);
-            state.map.fitBounds(group.getBounds(), { padding: [60, 60] });
-        }
-
-        function updateRouteStats(data) {
-            const formatDistance = (d) => d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`;
-            
-            document.getElementById('totalDistance').textContent = formatDistance(data.distance);
-            document.getElementById('steepUphillDistance').textContent = formatDistance(data.steepUphillDistance);
-            document.getElementById('elevationGain').textContent = `+${Math.round(data.elevationGain)} m`;
-            document.getElementById('elevationLoss').textContent = `-${Math.round(data.elevationLoss)} m`;
-            
-            calculateAndDisplayDuration(data.distance, data.elevationGain);
-        }
-        
-        async function displayElevationChart(elevationData) {
-            try {
-                await loadChartJs();
-            } catch {
-                showMessage('Αποτυχία φόρτωσης του γραφήματος.', 'error');
-                return;
-            }
-
-            const ctx = document.getElementById('elevationChart').getContext('2d');
-            if (state.elevationChart) state.elevationChart.destroy();
-            document.getElementById('no-elevation-message').style.display = 'none';
-
-            const labels = elevationData.map(d => (d.distance / 1000).toFixed(2));
-            const elevations = elevationData.map(d => d.elevation);
-
-            state.elevationChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Υψόμετρο (m)',
-                        data: elevations,
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        borderWidth: 2,
-                        fill: true,
-                        pointRadius: 0,
-                        pointHoverRadius: 5,
-                        tension: 0.1,
-                        segment: {
-                            borderColor: ctx => {
-                                const index = ctx.p1DataIndex; // ctx.p1DataIndex refers to the end point of the segment
-                                const point = elevationData[index];
-                                return point && point.isSteep ? '#FF0000' : '#3B82F6';
-                            }
-                        }
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    interaction: { intersect: false, mode: 'index' },
-                    scales: {
-                        x: { title: { display: true, text: 'Απόσταση (km)' }, ticks: { autoSkip: true, maxTicksLimit: 10 } },
-                        y: { title: { display: true, text: 'Υψόμετρο (m)' } }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                title: (ctx) => `Απόσταση: ${ctx[0].label} km`,
-                                label: (ctx) => `Υψόμετρο: ${Math.round(ctx.raw)} m`
-                            }
-                        }
-                    },
-                    onHover: (event, chartElement) => {
-                        if (chartElement.length > 0) {
-                            const index = chartElement[0].index;
-                            const coord = state.currentElevation.coordinates[index];
-                            if (coord) {
-                                const latlng = [coord[0], coord[1]];
-                                if (!state.highlightMarker) {
-                                    state.highlightMarker = L.circleMarker(latlng, {
-                                        radius: 8, fillColor: "#F59E0B", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9
-                                    }).addTo(state.map);
-                                } else {
-                                    state.highlightMarker.setLatLng(latlng);
+                                elevationProfileData.push({ distance: cumulativeDistance, elevation: elevation, isSteep: isSteepSegment });
+                            });
+                
+                            const maxChartPoints = 300;
+                            let sampledElevationData = elevationProfileData;
+                            let sampledRouteCoords = routeCoordinates;
+                
+                            if (elevationProfileData.length > maxChartPoints) {
+                                sampledElevationData = [];
+                                sampledRouteCoords = [];
+                                const step = Math.floor(elevationProfileData.length / maxChartPoints);
+                                for (let i = 0; i < elevationProfileData.length; i += step) {
+                                    sampledElevationData.push(elevationProfileData[i]);
+                                    sampledRouteCoords.push(routeCoordinates[i]);
                                 }
                             }
-                        } else if (state.highlightMarker) {
-                            state.map.removeLayer(state.highlightMarker);
-                            state.highlightMarker = null;
-                        }
-                    }
-                }
-            });
-
-            document.getElementById('elevationChart').addEventListener('mouseleave', () => {
-                if (state.highlightMarker) {
-                    state.map.removeLayer(state.highlightMarker);
-                    state.highlightMarker = null;
-                }
-            });
-        }
-        
-        // --- UTILITY & HELPER FUNCTIONS ---
-        function clearRoute(clearPins) {
-            if (clearPins) {
-                state.markers.forEach(marker => state.map.removeLayer(marker));
-                state.markers = [];
-                state.pins = [];
-                document.getElementById('roundTripToggle').checked = false;
-                state.isRoundTrip = false;
-                document.getElementById('steepUphillToggle').checked = false;
-                state.showSteepHighlight = false;
                 
-                state.history = [];
-                state.historyIndex = -1;
-                saveState();
-            }
-            
-            state.routePolylines.forEach(p => state.map.removeLayer(p));
-            state.routeArrows.forEach(a => state.map.removeLayer(a));
-            state.routePolylines = [];
-            state.routeArrows = [];
-
-            if (state.polylineDecorator) {
-                state.map.removeLayer(state.polylineDecorator);
-                state.polylineDecorator = null;
-            }
-            
-            if (state.elevationChart) {
-                state.elevationChart.destroy();
-                state.elevationChart = null;
-            }
-            if (state.highlightMarker) {
-                state.map.removeLayer(state.highlightMarker);
-                state.highlightMarker = null;
-            }
-            if (state.searchResultMarker) {
-                state.map.removeLayer(state.searchResultMarker);
-                state.searchResultMarker = null;
-            }
-            
-            state.currentRoute = null;
-            state.currentElevation = { data: [], coordinates: [] };
-            
-            hideBottomPanel();
-            updateStatsVisibility(false);
-            document.getElementById('no-elevation-message').style.display = 'flex';
-            document.getElementById('estimatedDuration').textContent = '--';
-            updateUIState();
-        }
-
-
-        
-        function generateGPX(route) {
-            const timestamp = new Date().toISOString();
-            let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Route Planner" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
-  <metadata><time>${timestamp}</time></metadata>
-  <trk><name>Planned Route</name><trkseg>`;
-            
-            route.coordinates.forEach(coord => {
-                gpx += `\n      <trkpt lat="${coord[0]}" lon="${coord[1]}"><ele>${coord[2] || 0}</ele></trkpt>`;
-            });
-            
-            gpx += `\n    </trkseg></trk></gpx>`;
-            return gpx;
-        }
-
-        function calculateHaversineDistance(coords1, coords2) {
-            const R = 6371e3; // metres
-            const φ1 = coords1[0] * Math.PI/180;
-            const φ2 = coords2[0] * Math.PI/180;
-            const Δφ = (coords2[0]-coords1[0]) * Math.PI/180;
-            const Δλ = (coords2[1]-coords1[1]) * Math.PI/180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return R * c;
-        }
-
-        // NEW: Function to find the best index to insert a new waypoint
-        function findBestWaypointInsertIndex(newLatLng) {
-            if (state.pins.length < 2) {
-                return state.pins.length; // If less than 2 pins, just append
-            }
-
-            let minDistance = Infinity;
-            let bestIndex = state.pins.length; // Default to appending
-
-            for (let i = 0; i < state.pins.length - 1; i++) {
-                const p1 = state.pins[i];
-                const p2 = state.pins[i + 1];
-
-                // Calculate distance from newLatLng to the segment (p1, p2)
-                // This is a simplified approach. A more accurate one would project the point onto the segment.
-                // For now, we'll use the distance to the closest point on the segment.
-                const distToSegment = (p, a, b) => {
-                    const L2 = a.distanceTo(b) * a.distanceTo(b);
-                    if (L2 === 0) return p.distanceTo(a); // a == b
-                    const t = ((p.lng - a.lng) * (b.lng - a.lng) + (p.lat - a.lat) * (b.lat - a.lat)) / L2;
-                    if (t < 0) return p.distanceTo(a);
-                    if (t > 1) return p.distanceTo(b);
-                    const projection = L.latLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lat));
-                    return p.distanceTo(projection);
-                };
-                if (distToSegment(newLatLng, p1, p2) < minDistance) {
-                    minDistance = distToSegment(newLatLng, p1, p2);
-                    bestIndex = i + 1; // Insert after p1
-                }
-            }
-            return bestIndex;
-        }
-        
-       function calculateAndDisplayDuration(distance, elevationGain) {
-            if (distance === 0) {
-                document.getElementById('estimatedDuration').textContent = '--';
-                return;
-            }
-
-            const avgFlatSpeed = CONFIG.avgFlatSpeed || 15; // km/h
-            const elevationPenaltyMinutes = (elevationGain / 10) * 1;
-
-            const flatTimeMinutes = (distance / 1000) / avgFlatSpeed * 60;
-            const totalMinutes = Math.round(flatTimeMinutes + elevationPenaltyMinutes);
-
-            if (totalMinutes < 60) {
-                document.getElementById('estimatedDuration').textContent = `${totalMinutes} min`;
-            } else {
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                document.getElementById('estimatedDuration').textContent = `${hours}h ${minutes}m`;
-            }
-        }
-        
-        function debounce(func, delay) {
-            let timeout;
+                            state.currentElevation = { data: sampledElevationData, coordinates: sampledRouteCoords };
+                
+                            updateRouteStats({ distance: cumulativeDistance, elevationGain, steepUphillDistance });
+                            displayColoredRoute(routeCoordinates);
+                            displayElevationChart(sampledElevationData);
+                            updateStatsVisibility(true);
+                            showBottomPanel();
+                        }        
+                        // --- UI UPDATES & DISPLAY ---
+                        function showBottomPanel() {
+                            if (!state.currentRoute) return;
+                            bottomPanel.classList.add('is-visible');
+                            showPanelButton.classList.add('hidden');
+                        }
+                
+                        function hideBottomPanel() {
+                            bottomPanel.classList.remove('is-visible');
+                            if (state.currentRoute) {
+                                showPanelButton.classList.remove('hidden');
+                            }
+                        }
+                
+                        function displayColoredRoute(routeCoordinates) {
+                            state.routePolylines.forEach(p => state.map.removeLayer(p));
+                            state.routeArrows.forEach(a => state.map.removeLayer(a));
+                            state.routePolylines = [];
+                            state.routeArrows = [];
+                
+                            if (state.polylineDecorator) {
+                                state.map.removeLayer(state.polylineDecorator);
+                                state.polylineDecorator = null;
+                            }
+                
+                            if (state.showSteepHighlight) {
+                                let currentSegment = [];
+                                let isCurrentSegmentSteep = false;
+                                let allSegments = [];
+                
+                                for (let i = 1; i < routeCoordinates.length; i++) {
+                                    const startPoint = routeCoordinates[i - 1];
+                                    const endPoint = routeCoordinates[i];
+                                    const segmentDistance = calculateHaversineDistance(startPoint, endPoint);
+                                    const elevationDiff = endPoint[2] - startPoint[2];
+                                    let isSteep = false;
+                
+                                    if (segmentDistance > 0) {
+                                        const gradient = elevationDiff / segmentDistance;
+                                        if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
+                                    }
+                
+                                    if (i === 1) {
+                                        currentSegment.push([startPoint[0], startPoint[1]]);
+                                        isCurrentSegmentSteep = isSteep;
+                                    }
+                
+                                    if (isSteep !== isCurrentSegmentSteep) {
+                                        currentSegment.push([endPoint[0], endPoint[1]]);
+                                        allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
+                                        currentSegment = [[endPoint[0], endPoint[1]]];
+                                        isCurrentSegmentSteep = isSteep;
+                                    } else {
+                                        currentSegment.push([endPoint[0], endPoint[1]]);
+                                    }
+                                }
+                
+                                if (currentSegment.length > 1) {
+                                    allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
+                                }
+                
+                                allSegments.forEach(segment => {
+                                    const polyline = L.polyline(segment.coords, {
+                                        color: segment.isSteep ? '#FF0000' : '#3B82F6', weight: 5, opacity: 0.85
+                                    }).addTo(state.map);
+                                    state.routePolylines.push(polyline);
+                                });
+                            } else {
+                                const fullRouteCoords = routeCoordinates.map(c => [c[0], c[1]]);
+                                const polyline = L.polyline(fullRouteCoords, {
+                                    color: '#3B82F6', weight: 5, opacity: 0.85
+                                }).addTo(state.map);
+                                state.routePolylines.push(polyline);
+                            }
+                
+                            const fullPolyline = L.polyline(routeCoordinates.map(c => [c[0], c[1]]), { color: 'transparent' }).addTo(state.map);
+                            state.routePolylines.push(fullPolyline);
+                
+                            state.polylineDecorator = L.polylineDecorator(fullPolyline, {
+                                patterns: [{
+                                    offset: '10%', repeat: '400px',
+                                    symbol: L.Symbol.arrowHead({ pixelSize: 6, polygon: false, pathOptions: { stroke: true, weight: 1.5, color: '#000000', opacity: 0.9 } })
+                                }]
+                            }).addTo(state.map);
+                            state.routeArrows.push(state.polylineDecorator);
+                
+                            const group = new L.featureGroup([...state.routePolylines, ...state.markers]);
+                            state.map.fitBounds(group.getBounds(), { padding: [60, 60] });
+                        }
+                
+                        function updateRouteStats(data) {
+                            const formatDistance = (d) => d > 1000 ? `${(d / 1000).toFixed(2)} km` : `${Math.round(d)} m`;
+                            
+                            document.getElementById('totalDistance').textContent = formatDistance(data.distance);
+                            document.getElementById('steepUphillDistance').textContent = formatDistance(data.steepUphillDistance);
+                            document.getElementById('elevationGain').textContent = `+${Math.round(data.elevationGain)} m`;
+                        }
+                        
+                        async function displayElevationChart(elevationData) {
+                            try {
+                                await loadChartJs();
+                            } catch {
+                                showMessage('Αποτυχία φόρτωσης του γραφήματος.', 'error');
+                                return;
+                            }
+                
+                            const ctx = document.getElementById('elevationChart').getContext('2d');
+                            if (state.elevationChart) state.elevationChart.destroy();
+                            document.getElementById('no-elevation-message').style.display = 'none';
+                
+                            const labels = elevationData.map(d => (d.distance / 1000).toFixed(2));
+                            const elevations = elevationData.map(d => d.elevation);
+                
+                            state.elevationChart = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: labels,
+                                    datasets: [{
+                                        label: 'Υψόμετρο (m)',
+                                        data: elevations,
+                                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                        borderWidth: 2,
+                                        fill: true,
+                                        pointRadius: 0,
+                                        pointHoverRadius: 5,
+                                        tension: 0.1,
+                                        segment: {
+                                            borderColor: ctx => {
+                                                const index = ctx.p1DataIndex; // ctx.p1DataIndex refers to the end point of the segment
+                                                const point = elevationData[index];
+                                                return point && point.isSteep ? '#FF0000' : '#3B82F6';
+                                            }
+                                        }
+                                    }]
+                                },
+                                options: {
+                                    responsive: true, maintainAspectRatio: false,
+                                    interaction: { intersect: false, mode: 'index' },
+                                    scales: {
+                                        x: { title: { display: true, text: 'Απόσταση (km)' }, ticks: { autoSkip: true, maxTicksLimit: 10 } },
+                                        y: { title: { display: true, text: 'Υψόμετρο (m)' } }
+                                    },
+                                    plugins: {
+                                        legend: { display: false },
+                                        tooltip: {
+                                            callbacks: {
+                                                title: (ctx) => `Απόσταση: ${ctx[0].label} km`,
+                                                label: (ctx) => `Υψόμετρο: ${Math.round(ctx.raw)} m`
+                                            }
+                                        }
+                                    },
+                                    onHover: (event, chartElement) => {
+                                        if (chartElement.length > 0) {
+                                            const index = chartElement[0].index;
+                                            const coord = state.currentElevation.coordinates[index];
+                                            if (coord) {
+                                                const latlng = [coord[0], coord[1]];
+                                                if (!state.highlightMarker) {
+                                                    state.highlightMarker = L.circleMarker(latlng, {
+                                                        radius: 8, fillColor: "#F59E0B", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9
+                                                    }).addTo(state.map);
+                                                } else {
+                                                    state.highlightMarker.setLatLng(latlng);
+                                                }
+                                            }
+                                        } else if (state.highlightMarker) {
+                                            state.map.removeLayer(state.highlightMarker);
+                                            state.highlightMarker = null;
+                                        }
+                                    }
+                                }
+                            });
+                
+                            document.getElementById('elevationChart').addEventListener('mouseleave', () => {
+                                if (state.highlightMarker) {
+                                    state.map.removeLayer(state.highlightMarker);
+                                    state.highlightMarker = null;
+                                }
+                            });
+                        }
+                        
+                        // --- UTILITY & HELPER FUNCTIONS ---
+                        function clearRoute(clearPins) {
+                            if (clearPins) {
+                                state.markers.forEach(marker => state.map.removeLayer(marker));
+                                state.markers = [];
+                                state.pins = [];
+                                document.getElementById('roundTripToggle').checked = false;
+                                state.isRoundTrip = false;
+                                document.getElementById('steepUphillToggle').checked = false;
+                                state.showSteepHighlight = false;
+                                
+                                state.history = [];
+                                state.historyIndex = -1;
+                                saveState();
+                            }
+                            
+                            state.routePolylines.forEach(p => state.map.removeLayer(p));
+                            state.routeArrows.forEach(a => state.map.removeLayer(a));
+                            state.routePolylines = [];
+                            state.routeArrows = [];
+                
+                            if (state.polylineDecorator) {
+                                state.map.removeLayer(state.polylineDecorator);
+                                state.polylineDecorator = null;
+                            }
+                            
+                            if (state.elevationChart) {
+                                state.elevationChart.destroy();
+                                state.elevationChart = null;
+                            }
+                            if (state.highlightMarker) {
+                                state.map.removeLayer(state.highlightMarker);
+                                state.highlightMarker = null;
+                            }
+                            if (state.searchResultMarker) {
+                                state.map.removeLayer(state.searchResultMarker);
+                                state.searchResultMarker = null;
+                            }
+                            
+                            state.currentRoute = null;
+                            state.currentElevation = { data: [], coordinates: [] };
+                            
+                            hideBottomPanel();
+                            updateStatsVisibility(false);
+                            document.getElementById('no-elevation-message').style.display = 'flex';
+                            updateUIState();
+                        }
+                
+                
+                        
+                        function generateGPX(route) {
+                            const timestamp = new Date().toISOString();
+                            let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+                <gpx version="1.1" creator="Route Planner" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+                  <metadata><time>${timestamp}</time></metadata>
+                  <trk><name>Planned Route</name><trkseg>`;
+                            
+                            route.coordinates.forEach(coord => {
+                                gpx += `\n      <trkpt lat="${coord[0]}" lon="${coord[1]}"><ele>${coord[2] || 0}</ele></trkpt>`;
+                            });
+                            
+                            gpx += `\n    </trkseg></trk></gpx>`;
+                            return gpx;
+                        }
+                
+                        function calculateHaversineDistance(coords1, coords2) {
+                            const R = 6371e3; // metres
+                            const φ1 = coords1[0] * Math.PI/180;
+                            const φ2 = coords2[0] * Math.PI/180;
+                            const Δφ = (coords2[0]-coords1[0]) * Math.PI/180;
+                            const Δλ = (coords2[1]-coords1[1]) * Math.PI/180;
+                
+                            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+                            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                            return R * c;
+                        }
+                
+                        // NEW: Function to find the best index to insert a new waypoint
+                        function findBestWaypointInsertIndex(newLatLng) {
+                            if (state.pins.length < 2) {
+                                return state.pins.length; // If less than 2 pins, just append
+                            }
+                
+                            let minDistance = Infinity;
+                            let bestIndex = state.pins.length; // Default to appending
+                
+                            for (let i = 0; i < state.pins.length - 1; i++) {
+                                const p1 = state.pins[i];
+                                const p2 = state.pins[i + 1];
+                
+                                // Calculate distance from newLatLng to the segment (p1, p2)
+                                // This is a simplified approach. A more accurate one would project the point onto the segment.
+                                // For now, we'll use the distance to the closest point on the segment.
+                                const distToSegment = (p, a, b) => {
+                                    const L2 = a.distanceTo(b) * a.distanceTo(b);
+                                    if (L2 === 0) return p.distanceTo(a); // a == b
+                                    const t = ((p.lng - a.lng) * (b.lng - a.lng) + (p.lat - a.lat) * (b.lat - a.lat)) / L2;
+                                    if (t < 0) return p.distanceTo(a);
+                                    if (t > 1) return p.distanceTo(b);
+                                    const projection = L.latLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lat));
+                                    return p.distanceTo(projection);
+                                };
+                                if (distToSegment(newLatLng, p1, p2) < minDistance) {
+                                    minDistance = distToSegment(newLatLng, p1, p2);
+                                    bestIndex = i + 1; // Insert after p1
+                                }
+                            }
+                            return bestIndex;
+                        }
+                        
+                        function debounce(func, delay) {            let timeout;
             const debounced = function(...args) {
                 const context = this;
                 clearTimeout(timeout);
