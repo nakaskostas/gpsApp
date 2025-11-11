@@ -684,37 +684,6 @@
             return fullTableHtml;
         }
 
-        // NEW: Helper to generate the HTML for the waypoints table in the PDF.
-        function getPdfWaypointsTableHtml(pins, addresses) {
-            let tableRowsHtml = pins.map((pin, index) => {
-                const address = addresses[index] || "Δεν βρέθηκε διεύθυνση";
-                const coords = `${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}`;
-                return `
-                    <div style="display: table-row; border-bottom: 1px solid #ccc;">
-                        <div style="display: table-cell; padding: 8px; text-align: center; width: 10%; font-weight: bold;">${index + 1}</div>
-                        <div style="display: table-cell; padding: 8px; width: 60%;">${address}</div>
-                        <div style="display: table-cell; padding: 8px; text-align: center; width: 30%; font-family: monospace;">${coords}</div>
-                    </div>
-                `;
-            }).join('');
-
-            return `
-                <h2 style="font-size: 20px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; text-align: center;">Σημεία Διαδρομής (Waypoints)</h2>
-                <div style="display: table; width: 100%; border-collapse: collapse; font-size: 12px;">
-                    <div style="display: table-header-group; font-weight: bold; background-color: #eee;">
-                        <div style="display: table-row; border-bottom: 2px solid #555;">
-                            <div style="display: table-cell; padding: 10px; text-align: center; width: 10%;">Pin</div>
-                            <div style="display: table-cell; padding: 10px; text-align: left; width: 60%;">Διεύθυνση</div>
-                            <div style="display: table-cell; padding: 10px; text-align: center; width: 30%;">Συντεταγμένες</div>
-                        </div>
-                    </div>
-                    <div style="display: table-row-group;">
-                        ${tableRowsHtml}
-                    </div>
-                </div>
-            `;
-        }
-
         // Helper to measure the pixel height of the table header and a sample row.
         async function measurePdfElements(reportElement, sampleSegment) {
             const canvasScale = 2;
@@ -748,11 +717,6 @@
             }
 
             showLoading(true);
-
-            // Ensure addresses are loaded before generating the PDF
-            if (state.pins.length > 0 && state.pinAddresses.length !== state.pins.length) {
-                await fetchAllPinAddresses();
-            }
 
             // --- Setup ---
             const { jsPDF } = jspdf;
@@ -798,19 +762,7 @@
                 const statsImgHeight = statsCanvas.height * contentWidthMM / statsCanvas.width;
                 pdf.addImage(statsImgData, 'PNG', margin, margin, contentWidthMM, statsImgHeight);
 
-                // --- Page 2: Waypoints Table ---
-                if (state.pins.length > 0) {
-                    const waypointsHtml = getPdfWaypointsTableHtml(state.pins, state.pinAddresses);
-                    reportElement.innerHTML = waypointsHtml;
-                    const waypointsCanvas = await html2canvas(reportElement, { scale: canvasScale });
-                    const waypointsImgData = waypointsCanvas.toDataURL('image/png');
-                    const waypointsImgHeight = waypointsCanvas.height * contentWidthMM / waypointsCanvas.width;
-                    
-                    pdf.addPage();
-                    pdf.addImage(waypointsImgData, 'PNG', margin, margin, contentWidthMM, waypointsImgHeight);
-                }
-
-                // --- Pages 3...N: Slope Analysis Table ---
+                // --- Pages 2...N: Slope Analysis Table ---
                 const segments = generateSteepnessReport(state.currentRoute.coordinates);
                 if (segments.length > 0) {
                     const totalSteepDistance = segments.reduce((total, seg) => total + (seg.isSteep ? seg.distance : 0), 0);
