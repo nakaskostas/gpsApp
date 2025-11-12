@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Σχεδιαστής Διαδρομής με Αναζήτηση</title>
     
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <!-- MapTiler SDK CSS -->
+    <link href="https://cdn.maptiler.com/maptiler-sdk-js/v2.0.3/maptiler-sdk.css" rel="stylesheet" />
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -284,6 +284,36 @@
             transition: opacity 0.1s ease-out;
         }
 
+        .elevation-highlight-marker {
+            background: #F59E0B;
+            border: 2px solid white;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        /* MapLibre/MapTiler SDK compatibility styles */
+        .maptiler-ctrl-group {
+            background: rgba(255, 255, 255, 0.8) !important;
+            backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important;
+            border: 1px solid rgba(200, 200, 200, 0.4) !important;
+            border-radius: 0.5rem !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+        }
+        .maptiler-ctrl button {
+            background-color: transparent !important;
+            width: 30px !important;
+            height: 30px !important;
+        }
+        .maptiler-ctrl-top-left {
+            left: 1rem;
+            top: 90px; /* Position below address button */
+        }
+
+
+
         /* --- FONT SCALING FOR LARGE DISPLAYS --- */
         @media (min-width: 1920px) {
             html {
@@ -437,6 +467,8 @@
                     <!-- Options will be populated by JavaScript -->
                 </select>
             </div>
+
+
         </div>
 
         <!-- Right-Click Context Menu -->
@@ -528,13 +560,8 @@
         </div>
     </div>
 
-    <!-- Leaflet JS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    
-    <!-- Leaflet Polyline Decorator Plugin for arrows -->
-    <script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.min.js"></script>
+    <!-- MapTiler SDK JS -->
+    <script src="https://cdn.maptiler.com/maptiler-sdk-js/v2.0.3/maptiler-sdk.umd.min.js"></script>
 
     <!-- PDF Generation Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -885,19 +912,18 @@
         // --- GLOBAL STATE ---
         const state = {
             map: null,
-            pins: [],
-            markers: [],
-            routePolylines: [],
-            routeArrows: [],
+            pins: [], // Stores maptilersdk.LngLat objects
+            markers: [], // Stores maptilersdk.Marker objects
+            // routePolylines, routeArrows, polylineDecorator are removed as they are Leaflet-specific
             elevationChart: null,
             currentRoute: null,
-            currentTileLayer: null,
+            // currentTileLayer is removed, managed by map.getStyle()
+            mapStyles: {}, // To store MapTiler styles
             currentElevation: { data: [], coordinates: [] },
             highlightMarker: null,
             selectedMarkerIndex: -1,
             searchResultMarker: null,
             isRoundTrip: false,
-            polylineDecorator: null,
             isChartJsLoaded: false,
             history: [],
             historyIndex: -1,
@@ -911,7 +937,7 @@
             isAddressPanelVisible: false,
         };
 
-        let rightClickLatLng = null; // Stores the latlng of the right-click event
+        let rightClickLatLng = null; // Stores the LngLat of the right-click event
         let insertIndex = -1; // Stores the calculated index for waypoint insertion
         let rightClickedPinIndex = -1; // Stores the index of the right-clicked marker
         // --- UI ELEMENTS & SHARED VARIABLES ---
@@ -927,11 +953,11 @@
             setupEventListeners();
             
             if (!parseUrlAndRestore()) {
-                saveState();
+                // saveState(); // TODO: Re-enable after refactoring saveState
             }
             
             updateStatsVisibility(false);
-            console.log('Εφαρμογή Σχεδιασμού Διαδρομής αρχικοποιήθηκε.');
+            console.log('Εφαρμογή Σχεδιασμού Διαδρομής αρχικοποιήθηκε με MapTiler SDK.');
         }
 
         function initUIElements() {
@@ -941,40 +967,35 @@
         }
         
         function initMap() {
-            state.map = L.map('map', {
-                center: CONFIG.DEFAULT_CENTER,
+            maptilersdk.config.apiKey = CONFIG.MAPTILER_API_KEY;
+
+            state.map = new maptilersdk.Map({
+                container: 'map',
+                style: maptilersdk.MapStyle.STREETS,
+                center: [CONFIG.DEFAULT_CENTER[1], CONFIG.DEFAULT_CENTER[0]],
                 zoom: CONFIG.DEFAULT_ZOOM,
-                zoomControl: true
+                hash: false,
             });
 
-            const MaptilerAttribution = '<a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a>';
-
-            const tileLayers = {
-                'Οδικός': L.tileLayer(`https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${CONFIG.MAPTILER_API_KEY}`, {
-                    attribution: MaptilerAttribution,
-                    maxZoom: 19,
-                }),
-                'Δορυφορικός': L.tileLayer(`https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=${CONFIG.MAPTILER_API_KEY}`, {
-                    attribution: MaptilerAttribution,
-                    maxZoom: 19,
-                }),
-                'Υβριδικός': L.tileLayer(`https://api.maptiler.com/maps/hybrid/{z}/{x}/{y}.png?key=${CONFIG.MAPTILER_API_KEY}`, {
-                    attribution: MaptilerAttribution,
-                    maxZoom: 19,
-                }),
-                'Τοπογραφικός': L.tileLayer(`https://api.maptiler.com/maps/topo/{z}/{x}/{y}.png?key=${CONFIG.MAPTILER_API_KEY}`, {
-                    attribution: MaptilerAttribution,
-                    maxZoom: 19,
-                }),
-                'Απλός': L.tileLayer(`https://api.maptiler.com/maps/basic-v2/{z}/{x}/{y}.png?key=${CONFIG.MAPTILER_API_KEY}`, {
-                    attribution: MaptilerAttribution,
-                    maxZoom: 19,
-                })
+            state.mapStyles = {
+                'Οδικός': maptilersdk.MapStyle.STREETS,
+                'Δορυφορικός': maptilersdk.MapStyle.SATELLITE,
+                'Υβριδικός': maptilersdk.MapStyle.HYBRID,
+                'Τοπογραφικός': maptilersdk.MapStyle.TOPO,
+                'Απλός': maptilersdk.MapStyle.BASIC,
             };
-            
-            state.tileLayers = tileLayers;
-            state.currentTileLayer = tileLayers['Οδικός'];
-            state.currentTileLayer.addTo(state.map);
+
+            state.map.on('load', () => {
+                // Add standard controls to the top-left corner.
+                state.map.addControl(new maptilersdk.NavigationControl(), 'top-left');
+                state.map.addControl(new maptilersdk.TerrainControl({
+                    source: 'terrainSource', // Source is added in reapplyCustomMapElements
+                    exaggeration: 1.5
+                }), 'top-left');
+
+                // Initialize all our custom data sources and layers
+                reapplyCustomMapElements();
+            });
             
             state.map.on('click', handleMapClick);
             state.map.on('contextmenu', handleMapRightClick);
@@ -983,7 +1004,7 @@
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const { latitude, longitude } = position.coords;
-                        state.map.setView([latitude, longitude], CONFIG.DEFAULT_ZOOM);
+                        state.map.flyTo({ center: [longitude, latitude], zoom: CONFIG.DEFAULT_ZOOM });
                     },
                     (error) => console.log('Η γεωεντοποπιση απέτυχε:', error.message),
                     { timeout: 5000 }
@@ -991,6 +1012,66 @@
             }
         }
         
+        function reapplyCustomMapElements() {
+            // This function adds back all sources and layers that are not part of the map style
+            // and are therefore removed whenever setStyle is called.
+
+            // Guard against running multiple times
+            if (state.map.getSource('routeSource')) return;
+
+            // Add terrain source
+            state.map.addSource('terrainSource', {
+                type: 'raster-dem',
+                url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${CONFIG.MAPTILER_API_KEY}`
+            });
+
+            // Add route data sources
+            state.map.addSource('routeSource', { type: 'geojson', data: { type: 'Feature', geometry: null } });
+            state.map.addSource('steepRouteSource', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+            state.map.addSource('routeArrowsSource', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
+            // Add layers
+            state.map.addLayer({
+                id: 'routeLayer',
+                type: 'line',
+                source: 'routeSource',
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: { 'line-color': '#3B82F6', 'line-width': 5, 'line-opacity': 0.8 }
+            });
+            state.map.addLayer({
+                id: 'steepRouteLayer',
+                type: 'line',
+                source: 'steepRouteSource',
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: { 'line-color': '#EF4444', 'line-width': 6, 'line-opacity': 0 }
+            });
+
+            // Load arrow image and add layer
+            const arrowSvg = `<svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 0L11.1547 1.58254L17.863 5.99999H0V7.99999H17.863L11.1547 12.4175L12 14L24 7L12 0Z" fill="#333333"/></svg>`;
+            const arrowUrl = `data:image/svg+xml;base64,${btoa(arrowSvg)}`;
+            state.map.loadImage(arrowUrl, (error, image) => {
+                if (error) { console.error('Failed to load arrow image:', error); return; }
+                if (!state.map.hasImage('route-arrow')) {
+                    state.map.addImage('route-arrow', image);
+                }
+                if (!state.map.getLayer('routeArrowsLayer')) {
+                    state.map.addLayer({
+                        id: 'routeArrowsLayer',
+                        type: 'symbol',
+                        source: 'routeArrowsSource',
+                        layout: {
+                            'icon-image': 'route-arrow',
+                            'icon-size': 0.5,
+                            'icon-rotate': ['get', 'bearing'],
+                            'icon-rotation-alignment': 'map',
+                            'icon-allow-overlap': true,
+                            'icon-ignore-placement': true
+                        }
+                    });
+                }
+            });
+        }
+
         function setupEventListeners() {
             document.getElementById('clearRoute').addEventListener('click', () => clearRoute(true));
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
@@ -1067,7 +1148,7 @@
 
             window.addEventListener('resize', () => {
                 if (state.map) {
-                    setTimeout(() => state.map.invalidateSize(), 100);
+                    setTimeout(() => state.map.resize(), 100);
                 }
                 if (state.elevationChart) {
                     setTimeout(() => {
@@ -1116,9 +1197,72 @@
                 debouncedFetchAddresses(); // Force a refresh
             });
 
+            // This function sets up all our custom sources and layers.
+            // It's called on initial map load and after every style change.
+            function reapplyCustomMapElements() {
+                // Guard against running if sources already exist
+                if (state.map.getSource('routeSource')) return;
+
+                // Add sources
+                state.map.addSource('terrainSource', {
+                    type: 'raster-dem',
+                    url: `https://api.maptiler.com/tiles/terrain-rgb/tiles.json?key=${CONFIG.MAPTILER_API_KEY}`
+                });
+                state.map.addSource('routeSource', { type: 'geojson', data: { type: 'Feature', geometry: null } });
+                state.map.addSource('steepRouteSource', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+                state.map.addSource('routeArrowsSource', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+
+                // Add layers
+                state.map.addLayer({
+                    id: 'routeLayer',
+                    type: 'line',
+                    source: 'routeSource',
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: { 'line-color': '#3B82F6', 'line-width': 5, 'line-opacity': 0.8 }
+                });
+                state.map.addLayer({
+                    id: 'steepRouteLayer',
+                    type: 'line',
+                    source: 'steepRouteSource',
+                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                    paint: { 'line-color': '#EF4444', 'line-width': 6, 'line-opacity': 0 }
+                });
+
+                // Load arrow image and add layer
+                const arrowSvg = `<svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 0L11.1547 1.58254L17.863 5.99999H0V7.99999H17.863L11.1547 12.4175L12 14L24 7L12 0Z" fill="#333333"/></svg>`;
+                const arrowUrl = `data:image/svg+xml;base64,${btoa(arrowSvg)}`;
+                state.map.loadImage(arrowUrl, (error, image) => {
+                    if (error) { console.error('Failed to load arrow image:', error); return; }
+                    if (!state.map.hasImage('route-arrow')) {
+                        state.map.addImage('route-arrow', image);
+                    }
+                    if (!state.map.getLayer('routeArrowsLayer')) {
+                        state.map.addLayer({
+                            id: 'routeArrowsLayer',
+                            type: 'symbol',
+                            source: 'routeArrowsSource',
+                            layout: {
+                                'icon-image': 'route-arrow',
+                                'icon-size': 0.5,
+                                'icon-rotate': ['get', 'bearing'],
+                                'icon-rotation-alignment': 'map',
+                                'icon-allow-overlap': true,
+                                'icon-ignore-placement': true
+                            }
+                        });
+                    }
+                });
+
+                // If a route already exists in the state, redraw it on the new style
+                if (state.currentRoute) {
+                    displayColoredRoute(state.currentRoute.coordinates);
+                }
+            }
+
+
             // --- MAP STYLE SWITCHER LOGIC ---
             const switcher = document.getElementById('mapStyleSwitcher');
-            Object.keys(state.tileLayers).forEach(name => {
+            Object.keys(state.mapStyles).forEach(name => {
                 const option = document.createElement('option');
                 option.value = name;
                 option.textContent = name;
@@ -1126,13 +1270,26 @@
             });
 
             switcher.addEventListener('change', (e) => {
-                const selectedStyle = e.target.value;
-                const newLayer = state.tileLayers[selectedStyle];
+                const selectedStyleName = e.target.value;
+                const newStyle = state.mapStyles[selectedStyleName];
 
-                if (newLayer && state.currentTileLayer !== newLayer) {
-                    state.map.removeLayer(state.currentTileLayer);
-                    newLayer.addTo(state.map);
-                    state.currentTileLayer = newLayer;
+                if (newStyle) {
+                    state.map.setStyle(newStyle);
+                    
+                    // After the style changes, re-apply our custom sources/layers.
+                    // Then, if a route exists, wait for the map to be fully idle
+                    // before attempting to redraw the route data. This prevents race conditions.
+                    state.map.once('styledata', () => {
+                        reapplyCustomMapElements();
+                        if (state.currentRoute) {
+                            state.map.once('idle', () => {
+                                // A final check in case the user cleared the route while the style was changing
+                                if (state.currentRoute) {
+                                    displayColoredRoute(state.currentRoute.coordinates);
+                                }
+                            });
+                        }
+                    });
                 }
             });
         }
@@ -1223,7 +1380,8 @@
         }
         
         function restoreState(snapshot) {
-            state.pins = snapshot.pins.map(p => L.latLng(p.lat, p.lng));
+            // MapTiler uses LngLat object, which is compatible with {lng, lat}
+            state.pins = snapshot.pins.map(p => new maptilersdk.LngLat(p.lng, p.lat));
             state.isRoundTrip = snapshot.isRoundTrip;
             state.showSteepHighlight = snapshot.showSteepHighlight ?? false;
             
@@ -1235,17 +1393,20 @@
         }
 
         function redrawFromState() {
-            state.markers.forEach(marker => state.map.removeLayer(marker));
+            // Remove existing markers from the map
+            state.markers.forEach(marker => marker.remove());
             state.markers = [];
-            state.routePolylines.forEach(p => state.map.removeLayer(p));
-            state.routePolylines = [];
-            state.routeArrows.forEach(a => state.map.removeLayer(a));
-            state.routeArrows = [];
-            if (state.polylineDecorator) {
-                state.map.removeLayer(state.polylineDecorator);
-                state.polylineDecorator = null;
+            
+            // Clear route data from sources
+            if (state.map.isStyleLoaded()) {
+                const routeSource = state.map.getSource('routeSource');
+                if (routeSource) routeSource.setData({ type: 'Feature', geometry: null });
+                
+                const steepSource = state.map.getSource('steepRouteSource');
+                if (steepSource) steepSource.setData({ type: 'FeatureCollection', features: [] });
             }
             
+            // Re-add markers based on the new state
             state.pins.forEach((pin, index) => {
                 addMarker(pin, index + 1);
             });
@@ -1253,7 +1414,7 @@
             if (state.pins.length >= 2) {
                 calculateRoute();
             } else {
-                clearRoute(false);
+                clearRoute(false); // This will also need refactoring
             }
             updateUIState();
         }
@@ -1304,18 +1465,26 @@
 
                 const pins = parts.map(p => {
                     const coords = p.split(',');
-                    return L.latLng(parseFloat(coords[0]), parseFloat(coords[1]));
+                    // Return an object compatible with maptilersdk.LngLat
+                    return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
                 });
 
                 if (pins.length > 0) {
                     const snapshot = { 
-                        pins: pins.map(p => ({lat: p.lat, lng: p.lng})), 
+                        pins: pins, 
                         isRoundTrip,
                         showSteepHighlight
                     };
                     state.history = [snapshot];
                     state.historyIndex = 0;
-                    restoreState(snapshot);
+                    
+                    // Wait for map to be loaded before restoring state
+                    if (state.map.isStyleLoaded()) {
+                        restoreState(snapshot);
+                    } else {
+                        state.map.once('load', () => restoreState(snapshot));
+                    }
+                    
                     console.log('Route restored from URL.');
                     return true;
                 }
@@ -1395,7 +1564,6 @@
                         throw new Error("Μη έγκυρη δομή GPX.");
                     }
 
-                    // Use querySelectorAll for more robust parsing across different GPX variations
                     const waypoints = xmlDoc.querySelectorAll('wpt');
                     let newPins = [];
 
@@ -1404,7 +1572,7 @@
                             const lat = waypoints[i].getAttribute('lat');
                             const lon = waypoints[i].getAttribute('lon');
                             if (lat && lon) {
-                                newPins.push(L.latLng(parseFloat(lat), parseFloat(lon)));
+                                newPins.push(new maptilersdk.LngLat(parseFloat(lon), parseFloat(lat)));
                             }
                         }
                     }
@@ -1418,7 +1586,7 @@
                         newPins = newPins.slice(0, CONFIG.MAX_PINS);
                     }
 
-                    clearRoute(false);
+                    clearRoute(true); // Clear everything before loading
                     state.pins = newPins;
                     redrawFromState();
                     saveState();
@@ -1437,12 +1605,17 @@
 
         // --- MAP INTERACTION ---
         function handleMapClick(e) {
+            // Prevent clicks when interacting with a marker
+            if (e.originalEvent.target.closest('.maptiler-marker')) {
+                return;
+            }
+
             if (state.pins.length >= CONFIG.MAX_PINS) {
                 showMessage(`Επιτρέπονται μέχρι ${CONFIG.MAX_PINS} σημεία.`, 'error');
                 return;
             }
             
-            const latlng = e.latlng;
+            const latlng = e.lngLat;
             state.pins.push(latlng);
             addMarker(latlng, state.pins.length);
             
@@ -1453,15 +1626,14 @@
             updateUIState();
         }
         
-        // MODIFIED: handleMapRightClick now shows a context menu
         function handleMapRightClick(e) {
-            e.originalEvent.preventDefault();
+            e.preventDefault();
             
-            rightClickLatLng = e.latlng;
+            rightClickLatLng = e.lngLat;
+            // findBestWaypointInsertIndex will need refactoring to use LngLat
             insertIndex = findBestWaypointInsertIndex(rightClickLatLng);
             rightClickedPinIndex = -1; // Reset pin index
 
-            // Configure menu for "Add Waypoint"
             const addWaypointBtn = document.getElementById('addWaypointBtn');
             const removePinBtn = document.getElementById('removePinBtn');
             addWaypointBtn.style.display = 'flex';
@@ -1469,7 +1641,6 @@
 
             const contextMenu = document.getElementById('contextMenu');
             
-            // Temporarily show to get dimensions, then hide
             contextMenu.style.visibility = 'hidden';
             contextMenu.classList.remove('hidden');
             const menuWidth = contextMenu.offsetWidth;
@@ -1480,60 +1651,6 @@
             let x = e.originalEvent.clientX;
             let y = e.originalEvent.clientY;
 
-            // Adjust position if it goes off screen
-            if (x + menuWidth > window.innerWidth) {
-                x = window.innerWidth - menuWidth - 10; // 10px padding from right edge
-            }
-            if (y + menuHeight > window.innerHeight) {
-                y = window.innerHeight - menuHeight - 10; // 10px padding from bottom edge
-            }
-            if (x < 0) x = 0; // Don't go off left edge
-            if (y < 0) y = 0; // Don't go off top edge
-
-            contextMenu.style.left = `${x}px`;
-            contextMenu.style.top = `${y}px`;
-            contextMenu.classList.remove('hidden');
-
-            // Hide menu if clicked outside or another right-click occurs
-            const hideMenu = (event) => {
-                if (!contextMenu.contains(event.target) && event.button !== 2) {
-                    contextMenu.classList.add('hidden');
-                    document.removeEventListener('click', hideMenu);
-                    document.removeEventListener('contextmenu', hideMenu);
-                }
-            };
-            document.addEventListener('click', hideMenu);
-            document.addEventListener('contextmenu', hideMenu);
-        }
-
-        // NEW: Function to handle right-click on a marker
-        function handleMarkerRightClick(e) {
-            e.originalEvent.preventDefault();
-            L.DomEvent.stopPropagation(e); // Prevent map's contextmenu from firing
-
-            rightClickedPinIndex = state.markers.indexOf(e.target);
-            if (rightClickedPinIndex === -1) return;
-
-            // Configure menu for "Remove Pin"
-            const addWaypointBtn = document.getElementById('addWaypointBtn');
-            const removePinBtn = document.getElementById('removePinBtn');
-            addWaypointBtn.style.display = 'none';
-            removePinBtn.style.display = 'flex';
-
-            const contextMenu = document.getElementById('contextMenu');
-            
-            // Temporarily show to get dimensions, then hide
-            contextMenu.style.visibility = 'hidden';
-            contextMenu.classList.remove('hidden');
-            const menuWidth = contextMenu.offsetWidth;
-            const menuHeight = contextMenu.offsetHeight;
-            contextMenu.classList.add('hidden');
-            contextMenu.style.visibility = 'visible';
-
-            let x = e.originalEvent.clientX;
-            let y = e.originalEvent.clientY;
-
-            // Adjust position if it goes off screen
             if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
             if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
             if (x < 0) x = 0;
@@ -1554,90 +1671,126 @@
             document.addEventListener('contextmenu', hideMenu);
         }
 
-        // NEW: Function to add a waypoint at a specific index
+        function handleMarkerRightClick(e, markerIndex) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            rightClickedPinIndex = markerIndex;
+            if (rightClickedPinIndex === -1) return;
+
+            const addWaypointBtn = document.getElementById('addWaypointBtn');
+            const removePinBtn = document.getElementById('removePinBtn');
+            addWaypointBtn.style.display = 'none';
+            removePinBtn.style.display = 'flex';
+
+            const contextMenu = document.getElementById('contextMenu');
+            
+            contextMenu.style.visibility = 'hidden';
+            contextMenu.classList.remove('hidden');
+            const menuWidth = contextMenu.offsetWidth;
+            const menuHeight = contextMenu.offsetHeight;
+            contextMenu.classList.add('hidden');
+            contextMenu.style.visibility = 'visible';
+
+            let x = e.clientX;
+            let y = e.clientY;
+
+            if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
+            if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+
+            contextMenu.style.left = `${x}px`;
+            contextMenu.style.top = `${y}px`;
+            contextMenu.classList.remove('hidden');
+
+            const hideMenu = (event) => {
+                if (!contextMenu.contains(event.target) && event.button !== 2) {
+                    contextMenu.classList.add('hidden');
+                    document.removeEventListener('click', hideMenu);
+                    document.removeEventListener('contextmenu', hideMenu);
+                }
+            };
+            document.addEventListener('click', hideMenu);
+            document.addEventListener('contextmenu', hideMenu);
+        }
+
         function addWaypoint(latlng, index) {
             if (state.pins.length >= CONFIG.MAX_PINS) {
                 showMessage(`Επιτρέπονται μέχρι ${CONFIG.MAX_PINS} σημεία.`, 'error');
                 return;
             }
 
-            state.pins.splice(index, 0, latlng); // Insert at the specific index
+            state.pins.splice(index, 0, latlng);
             
-            // Re-add all markers to update numbering and icons
-            state.markers.forEach(marker => state.map.removeLayer(marker));
-            state.markers = [];
-            state.pins.forEach((pin, i) => addMarker(pin, i + 1));
-
-            if (state.pins.length >= 2) calculateRoute();
+            redrawFromState(); // Easiest way to re-number and re-draw everything
             saveState();
             updateUIState();
         }
 
-        function addMarker(latlng, number) { // number is now the 1-based index
-            const isFirst = number === 1;
-            const marker = L.marker(latlng, {
-                icon: createNumberedIcon(number, isFirst),
-                draggable: true
-            }).addTo(state.map);
+        function addMarker(lngLat, number) {
+            const el = createNumberedIcon(number, number === 1);
             
-            marker.on('dragend', (e) => {
-                const index = state.markers.indexOf(marker);
-                state.pins[index] = e.target.getLatLng();
-                if (state.pins.length >= 2) calculateRoute();
-                saveState();
-            });
+            const marker = new maptilersdk.Marker({element: el, draggable: true})
+                .setLngLat(lngLat)
+                .addTo(state.map);
+            
+            const index = state.markers.length; // Index before pushing
+            
+            marker.getElement().addEventListener('contextmenu', (e) => handleMarkerRightClick(e, index));
 
-            marker.on('contextmenu', handleMarkerRightClick);
+            marker.on('dragend', () => {
+                const markerIndex = state.markers.indexOf(marker);
+                if (markerIndex > -1) {
+                    state.pins[markerIndex] = marker.getLngLat();
+                    if (state.pins.length >= 2) calculateRoute();
+                    saveState();
+                }
+            });
             
             state.markers.push(marker);
-            updateFirstMarkerIcon(); // Update icon based on round trip status
+            updateFirstMarkerIcon();
         }
 
         function removePin(index) {
             if (index < 0 || index >= state.pins.length) return;
             
-            state.map.removeLayer(state.markers[index]);
+            state.markers[index].remove();
             state.pins.splice(index, 1);
             state.markers.splice(index, 1);
             
-            state.markers.forEach((marker, i) => {
-                marker.setIcon(createNumberedIcon(i + 1, i === 0));
-            });
-            
-            if (state.pins.length >= 2) {
-                calculateRoute();
-            } else {
-                clearRoute(false);
-            }
+            // Re-draw everything to update numbers correctly
+            redrawFromState();
             saveState();
             updateUIState();
         }
 
         function createNumberedIcon(number, isStart = false) {
-            let baseClass = 'pin-icon';
+            const el = document.createElement('div');
+            el.className = 'pin-icon';
+            
             if (isStart) {
-                baseClass += ' start';
-                if (state.isRoundTrip) {
-                    baseClass += ' flag';
-                    return L.divIcon({
-                        className: baseClass,
-                        html: '🏁',
-                        iconSize: [32, 32],
-                        iconAnchor: [16, 16]
-                    });
+                el.classList.add('start');
+                if (state.isRoundTrip && state.pins.length > 1) {
+                    el.classList.add('flag');
+                    el.innerHTML = '🏁';
+                } else {
+                    el.innerHTML = number.toString();
                 }
+            } else {
+                el.innerHTML = number.toString();
             }
-            return L.divIcon({
-                className: baseClass,
-                html: number.toString(),
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-            });
+            return el;
         }
 
         function updateFirstMarkerIcon() {
             if (state.markers.length > 0) {
-                state.markers[0].setIcon(createNumberedIcon(1, true));
+                const firstMarker = state.markers[0];
+                const el = firstMarker.getElement();
+                const isRoundTrip = state.isRoundTrip && state.pins.length > 1;
+
+                el.innerHTML = isRoundTrip ? '🏁' : '1';
+                el.classList.toggle('flag', isRoundTrip);
             }
         }
 
@@ -1654,8 +1807,8 @@
 
         function handleSteepUphillToggle(e) {
             state.showSteepHighlight = e.target.checked;
-            if (state.currentRoute) {
-                displayColoredRoute(state.currentRoute.coordinates);
+            if (state.map.isStyleLoaded() && state.map.getLayer('steepRouteLayer')) {
+                state.map.setPaintProperty('steepRouteLayer', 'line-opacity', state.showSteepHighlight ? 0.8 : 0);
             }
             saveState();
         }
@@ -1759,14 +1912,20 @@
             const lat = parseFloat(item.lat);
             const lon = parseFloat(item.lon);
             
-            if (state.searchResultMarker) state.map.removeLayer(state.searchResultMarker);
+            if (state.searchResultMarker) {
+                state.searchResultMarker.remove();
+            }
             
-            state.map.flyTo([lat, lon], 15);
+            state.map.flyTo({ center: [lon, lat], zoom: 15 });
 
-            state.searchResultMarker = L.marker([lat, lon])
+            const popup = new maptilersdk.Popup({ offset: 25, closeButton: false })
+                .setHTML(`<b>${item.display_name}</b>`);
+
+            state.searchResultMarker = new maptilersdk.Marker({color: "#FF0000"})
+              .setLngLat([lon, lat])
+              .setPopup(popup)
               .addTo(state.map)
-              .bindPopup(`<b>${item.display_name}</b>`)
-              .openPopup();
+              .togglePopup();
 
             document.getElementById('search-input').value = getConciseLocationName(item);
             clearSuggestions();
@@ -1978,26 +2137,18 @@
 
         function panToPin(index) {
             if (state.pins[index]) {
-                state.map.flyTo(state.pins[index], 16);
+                state.map.flyTo({ center: state.pins[index], zoom: 16 });
                 
                 // Remove highlight from previously selected marker
                 if (state.selectedMarkerIndex !== -1 && state.markers[state.selectedMarkerIndex]) {
-                    const iconOptions = state.markers[state.selectedMarkerIndex].getIcon().options;
-                    if (iconOptions.className.includes(' selected')) {
-                        iconOptions.className = iconOptions.className.replace(' selected', '');
-                        state.markers[state.selectedMarkerIndex].setIcon(L.divIcon(iconOptions));
-                    }
+                    state.markers[state.selectedMarkerIndex].getElement().classList.remove('selected');
                 }
                 
                 state.selectedMarkerIndex = index;
                 
                 // Add highlight to the new selected marker
                 if (state.markers[index]) {
-                    const iconOptions = state.markers[index].getIcon().options;
-                    if (!iconOptions.className.includes(' selected')) {
-                        iconOptions.className += ' selected';
-                        state.markers[index].setIcon(L.divIcon(iconOptions));
-                    }
+                    state.markers[index].getElement().classList.add('selected');
                 }
             }
         }
@@ -2214,80 +2365,146 @@
                             }
                         }
                 
+                        // Helper function to calculate bearing between two points
+                        function getBearing(start, end) {
+                            const startLng = start[0] * Math.PI / 180;
+                            const startLat = start[1] * Math.PI / 180;
+                            const endLng = end[0] * Math.PI / 180;
+                            const endLat = end[1] * Math.PI / 180;
+
+                            const y = Math.sin(endLng - startLng) * Math.cos(endLat);
+                            const x = Math.cos(startLat) * Math.sin(endLat) - Math.sin(startLat) * Math.cos(endLat) * Math.cos(endLng - startLng);
+                            const bearing = Math.atan2(y, x) * 180 / Math.PI;
+                            return (bearing + 360) % 360;
+                        }
+
+                        // Helper function to get points along a line for arrows
+                        function getArrowPoints(coordinates, spacing) {
+                            if (coordinates.length < 2) return [];
+                            
+                            const arrowPoints = [];
+                            let totalDistance = 0;
+                            let distanceToNextArrow = spacing / 2; // Start halfway
+
+                            for (let i = 0; i < coordinates.length - 1; i++) {
+                                const start = coordinates[i];
+                                const end = coordinates[i + 1];
+                                const segmentDistance = haversineDistanceObjects({lng: start[0], lat: start[1]}, {lng: end[0], lat: end[1]});
+
+                                while (totalDistance + segmentDistance >= distanceToNextArrow) {
+                                    const distanceAlongSegment = distanceToNextArrow - totalDistance;
+                                    const ratio = segmentDistance > 0 ? distanceAlongSegment / segmentDistance : 0;
+                                    
+                                    const pointLng = start[0] + (end[0] - start[0]) * ratio;
+                                    const pointLat = start[1] + (end[1] - start[1]) * ratio;
+                                    
+                                    const bearing = getBearing(start, end);
+
+                                    arrowPoints.push({
+                                        type: 'Feature',
+                                        geometry: {
+                                            type: 'Point',
+                                            coordinates: [pointLng, pointLat]
+                                        },
+                                        properties: {
+                                            bearing: bearing
+                                        }
+                                    });
+                                    distanceToNextArrow += spacing;
+                                }
+                                totalDistance += segmentDistance;
+                            }
+                            return arrowPoints;
+                        }
+
                         function displayColoredRoute(routeCoordinates) {
-                            state.routePolylines.forEach(p => state.map.removeLayer(p));
-                            state.routeArrows.forEach(a => state.map.removeLayer(a));
-                            state.routePolylines = [];
-                            state.routeArrows = [];
-                
-                            if (state.polylineDecorator) {
-                                state.map.removeLayer(state.polylineDecorator);
-                                state.polylineDecorator = null;
+                            if (!state.map.isStyleLoaded()) {
+                                state.map.once('styledata', () => displayColoredRoute(routeCoordinates));
+                                return;
                             }
-                
-                            if (state.showSteepHighlight) {
-                                let currentSegment = [];
-                                let isCurrentSegmentSteep = false;
-                                let allSegments = [];
-                
-                                for (let i = 1; i < routeCoordinates.length; i++) {
-                                    const startPoint = routeCoordinates[i - 1];
-                                    const endPoint = routeCoordinates[i];
-                                    const segmentDistance = calculateHaversineDistance(startPoint, endPoint);
-                                    const elevationDiff = endPoint[2] - startPoint[2];
-                                    let isSteep = false;
-                
-                                    if (segmentDistance > 0) {
-                                        const gradient = elevationDiff / segmentDistance;
-                                        if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD) isSteep = true;
+                            // routeCoordinates are [lat, lng, ele]
+                            // GeoJSON is [lng, lat]
+                            const geojsonCoordinates = routeCoordinates.map(c => [c[1], c[0]]);
+
+                            // 1. Update the main route source
+                            const routeSource = state.map.getSource('routeSource');
+                            if (routeSource) {
+                                routeSource.setData({
+                                    type: 'Feature',
+                                    geometry: {
+                                        type: 'LineString',
+                                        coordinates: geojsonCoordinates
                                     }
-                
-                                    if (i === 1) {
-                                        currentSegment.push([startPoint[0], startPoint[1]]);
-                                        isCurrentSegmentSteep = isSteep;
-                                    }
-                
-                                    if (isSteep !== isCurrentSegmentSteep) {
-                                        currentSegment.push([endPoint[0], endPoint[1]]);
-                                        allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
-                                        currentSegment = [[endPoint[0], endPoint[1]]];
-                                        isCurrentSegmentSteep = isSteep;
-                                    } else {
-                                        currentSegment.push([endPoint[0], endPoint[1]]);
-                                    }
-                                }
-                
-                                if (currentSegment.length > 1) {
-                                    allSegments.push({ coords: [...currentSegment], isSteep: isCurrentSegmentSteep });
-                                }
-                
-                                allSegments.forEach(segment => {
-                                    const polyline = L.polyline(segment.coords, {
-                                        color: segment.isSteep ? '#FF0000' : '#3B82F6', weight: 5, opacity: 0.85
-                                    }).addTo(state.map);
-                                    state.routePolylines.push(polyline);
                                 });
-                            } else {
-                                const fullRouteCoords = routeCoordinates.map(c => [c[0], c[1]]);
-                                const polyline = L.polyline(fullRouteCoords, {
-                                    color: '#3B82F6', weight: 5, opacity: 0.85
-                                }).addTo(state.map);
-                                state.routePolylines.push(polyline);
                             }
-                
-                            const fullPolyline = L.polyline(routeCoordinates.map(c => [c[0], c[1]]), { color: 'transparent' }).addTo(state.map);
-                            state.routePolylines.push(fullPolyline);
-                
-                            state.polylineDecorator = L.polylineDecorator(fullPolyline, {
-                                patterns: [{
-                                    offset: '10%', repeat: '400px',
-                                    symbol: L.Symbol.arrowHead({ pixelSize: 6, polygon: false, pathOptions: { stroke: true, weight: 1.5, color: '#000000', opacity: 0.9 } })
-                                }]
-                            }).addTo(state.map);
-                            state.routeArrows.push(state.polylineDecorator);
-                
-                            const group = new L.featureGroup([...state.routePolylines, ...state.markers]);
-                            state.map.fitBounds(group.getBounds(), { padding: [60, 60] });
+
+                            // 2. Create and update the steep segments source
+                            const steepSegments = [];
+                            let currentSteepSegment = [];
+                            for (let i = 1; i < routeCoordinates.length; i++) {
+                                const startPoint = routeCoordinates[i - 1];
+                                const endPoint = routeCoordinates[i];
+                                const segmentDistance = calculateHaversineDistance(startPoint, endPoint);
+                                const elevationDiff = endPoint[2] - startPoint[2];
+                                
+                                if (segmentDistance > 0) {
+                                    const gradient = elevationDiff / segmentDistance;
+                                    if (gradient > CONFIG.STEEP_GRADIENT_THRESHOLD && elevationDiff > 0) {
+                                        if (currentSteepSegment.length === 0) {
+                                            currentSteepSegment.push([startPoint[1], startPoint[0]]);
+                                        }
+                                        currentSteepSegment.push([endPoint[1], endPoint[0]]);
+                                    } else {
+                                        if (currentSteepSegment.length > 1) {
+                                            steepSegments.push({
+                                                type: 'Feature',
+                                                properties: {},
+                                                geometry: { type: 'LineString', coordinates: currentSteepSegment }
+                                            });
+                                        }
+                                        currentSteepSegment = [];
+                                    }
+                                }
+                            }
+                            if (currentSteepSegment.length > 1) {
+                                steepSegments.push({
+                                    type: 'Feature',
+                                    properties: {},
+                                    geometry: { type: 'LineString', coordinates: currentSteepSegment }
+                                });
+                            }
+
+                            const steepSource = state.map.getSource('steepRouteSource');
+                            if (steepSource) {
+                                steepSource.setData({
+                                    type: 'FeatureCollection',
+                                    features: steepSegments
+                                });
+                            }
+                            
+                            // 3. Set visibility of the steep layer
+                            if (state.map.getLayer('steepRouteLayer')) {
+                                state.map.setPaintProperty('steepRouteLayer', 'line-opacity', state.showSteepHighlight ? 0.8 : 0);
+                            }
+
+                            // 4. Handle route arrows
+                            const arrowPoints = getArrowPoints(geojsonCoordinates, 400); // 400m spacing
+                            const arrowsSource = state.map.getSource('routeArrowsSource');
+                            if (arrowsSource) {
+                                arrowsSource.setData({
+                                    type: 'FeatureCollection',
+                                    features: arrowPoints
+                                });
+                            }
+
+                            // 5. Zoom map to fit the route
+                            if (geojsonCoordinates.length > 0) {
+                                const bounds = new maptilersdk.LngLatBounds(geojsonCoordinates[0], geojsonCoordinates[0]);
+                                for (const coord of geojsonCoordinates) {
+                                    bounds.extend(coord);
+                                }
+                                state.map.fitBounds(bounds, { padding: 80, duration: 1000 });
+                            }
                         }
                 
                         function updateRouteStats(data) {
@@ -2356,17 +2573,19 @@
                                             const index = chartElement[0].index;
                                             const coord = state.currentElevation.coordinates[index];
                                             if (coord) {
-                                                const latlng = [coord[0], coord[1]];
+                                                const lngLat = [coord[1], coord[0]]; // MapTiler is Lng, Lat
                                                 if (!state.highlightMarker) {
-                                                    state.highlightMarker = L.circleMarker(latlng, {
-                                                        radius: 8, fillColor: "#F59E0B", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9
-                                                    }).addTo(state.map);
+                                                    const el = document.createElement('div');
+                                                    el.className = 'elevation-highlight-marker';
+                                                    state.highlightMarker = new maptilersdk.Marker(el)
+                                                        .setLngLat(lngLat)
+                                                        .addTo(state.map);
                                                 } else {
-                                                    state.highlightMarker.setLatLng(latlng);
+                                                    state.highlightMarker.setLngLat(lngLat);
                                                 }
                                             }
                                         } else if (state.highlightMarker) {
-                                            state.map.removeLayer(state.highlightMarker);
+                                            state.highlightMarker.remove();
                                             state.highlightMarker = null;
                                         }
                                     }
@@ -2375,7 +2594,7 @@
                 
                             document.getElementById('elevationChart').addEventListener('mouseleave', () => {
                                 if (state.highlightMarker) {
-                                    state.map.removeLayer(state.highlightMarker);
+                                    state.highlightMarker.remove();
                                     state.highlightMarker = null;
                                 }
                             });
@@ -2384,7 +2603,7 @@
                         // --- UTILITY & HELPER FUNCTIONS ---
                         function clearRoute(clearPins) {
                             if (clearPins) {
-                                state.markers.forEach(marker => state.map.removeLayer(marker));
+                                state.markers.forEach(marker => marker.remove());
                                 state.markers = [];
                                 state.pins = [];
                                 document.getElementById('roundTripToggle').checked = false;
@@ -2397,14 +2616,16 @@
                                 saveState();
                             }
                             
-                            state.routePolylines.forEach(p => state.map.removeLayer(p));
-                            state.routeArrows.forEach(a => state.map.removeLayer(a));
-                            state.routePolylines = [];
-                            state.routeArrows = [];
-                
-                            if (state.polylineDecorator) {
-                                state.map.removeLayer(state.polylineDecorator);
-                                state.polylineDecorator = null;
+                            // Clear the route data from the map sources
+                            if (state.map.isStyleLoaded()) {
+                                const routeSource = state.map.getSource('routeSource');
+                                if (routeSource) routeSource.setData({ type: 'Feature', geometry: null });
+                                
+                                const steepSource = state.map.getSource('steepRouteSource');
+                                if (steepSource) steepSource.setData({ type: 'FeatureCollection', features: [] });
+
+                                const arrowsSource = state.map.getSource('routeArrowsSource');
+                                if (arrowsSource) arrowsSource.setData({ type: 'FeatureCollection', features: [] });
                             }
                             
                             if (state.elevationChart) {
@@ -2412,11 +2633,11 @@
                                 state.elevationChart = null;
                             }
                             if (state.highlightMarker) {
-                                state.map.removeLayer(state.highlightMarker);
+                                state.highlightMarker.remove();
                                 state.highlightMarker = null;
                             }
                             if (state.searchResultMarker) {
-                                state.map.removeLayer(state.searchResultMarker);
+                                state.searchResultMarker.remove();
                                 state.searchResultMarker = null;
                             }
                             
@@ -2457,34 +2678,41 @@
                             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
                             return R * c;
                         }
+
+                        function haversineDistanceObjects(lngLat1, lngLat2) {
+                            const R = 6371e3; // metres
+                            const φ1 = lngLat1.lat * Math.PI / 180;
+                            const φ2 = lngLat2.lat * Math.PI / 180;
+                            const Δφ = (lngLat2.lat - lngLat1.lat) * Math.PI / 180;
+                            const Δλ = (lngLat2.lng - lngLat1.lng) * Math.PI / 180;
+
+                            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                                      Math.cos(φ1) * Math.cos(φ2) *
+                                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+                            return R * c; // in metres
+                        }
                 
-                        // NEW: Function to find the best index to insert a new waypoint
+                        // Re-implemented to remove Leaflet dependencies
                         function findBestWaypointInsertIndex(newLatLng) {
                             if (state.pins.length < 2) {
-                                return state.pins.length; // If less than 2 pins, just append
+                                return state.pins.length;
                             }
                 
                             let minDistance = Infinity;
-                            let bestIndex = state.pins.length; // Default to appending
+                            let bestIndex = state.pins.length;
                 
                             for (let i = 0; i < state.pins.length - 1; i++) {
                                 const p1 = state.pins[i];
                                 const p2 = state.pins[i + 1];
                 
-                                // Calculate distance from newLatLng to the segment (p1, p2)
-                                // This is a simplified approach. A more accurate one would project the point onto the segment.
-                                // For now, we'll use the distance to the closest point on the segment.
-                                const distToSegment = (p, a, b) => {
-                                    const L2 = a.distanceTo(b) * a.distanceTo(b);
-                                    if (L2 === 0) return p.distanceTo(a); // a == b
-                                    const t = ((p.lng - a.lng) * (b.lng - a.lng) + (p.lat - a.lat) * (b.lat - a.lat)) / L2;
-                                    if (t < 0) return p.distanceTo(a);
-                                    if (t > 1) return p.distanceTo(b);
-                                    const projection = L.latLng(a.lat + t * (b.lat - a.lat), a.lng + t * (b.lng - a.lat));
-                                    return p.distanceTo(projection);
-                                };
-                                if (distToSegment(newLatLng, p1, p2) < minDistance) {
-                                    minDistance = distToSegment(newLatLng, p1, p2);
+                                // Midpoint approximation
+                                const midPoint = new maptilersdk.LngLat((p1.lng + p2.lng) / 2, (p1.lat + p2.lat) / 2);
+                                const distance = haversineDistanceObjects(newLatLng, midPoint);
+
+                                if (distance < minDistance) {
+                                    minDistance = distance;
                                     bestIndex = i + 1; // Insert after p1
                                 }
                             }
