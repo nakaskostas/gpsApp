@@ -940,9 +940,194 @@
             highlightedSuggestionIndex: -1,
             isSearchLoading: false,
             // Address Panel state
-            pinAddresses: [],
+            // Address Panel state
+            pinAddresses: [], // Will be an array of {status, address, lngLat} objects
             isAddressPanelVisible: false,
         };
+
+        // --- ADDRESS PANEL LOGIC ---
+
+        /**
+         * Renders the list of addresses in the address panel based on the current state.
+         */
+        function renderAddressList() {
+            const listEl = document.getElementById('addressList');
+
+            if (!state.isAddressPanelVisible) {
+                return;
+            }
+
+            if (state.pinAddresses.length === 0) {
+                listEl.innerHTML = '<p id="no-addresses-message" class="text-gray-500 text-sm">Προσθέστε σημεία στη διαδρομή για να δείτε τις διευθύνσεις.</p>';
+                return;
+            }
+
+            listEl.innerHTML = state.pinAddresses.map((item, index) => {
+                let addressText = '';
+                let isError = false;
+                let isLoading = false;
+
+                switch (item.status) {
+                    case 'loading':
+                        addressText = 'Αναζήτηση...';
+                        isLoading = true;
+                        break;
+                    case 'success':
+                        addressText = item.address;
+                        break;
+                    case 'error':
+                        addressText = 'Αποτυχία λήψης';
+                        isError = true;
+                        break;
+                    default: // 'empty'
+                        addressText = '...';
+                        break;
+                }
+
+                const isStart = index === 0;
+                let pinClass = 'pin-icon';
+                let pinContent = index + 1;
+                if (isStart) {
+                    pinClass += ' start';
+                    if (state.isRoundTrip && state.pins.length > 1) {
+                        pinClass += ' flag';
+                        pinContent = '🏁';
+                    }
+                }
+
+                let actionButton = '';
+                if (isLoading) {
+                    actionButton = '<div class="search-spinner" style="width: 16px; height: 16px;"></div>';
+                } else if (isError) {
+                    actionButton = `<button class="p-1 rounded-full hover:bg-gray-400/30 retry-address-btn" data-index="${index}" title="Επανάληψη">
+                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004 12c0 2.972 1.154 5.661 3.042 7.707M20 20v-5h-.581m0 0a8.001 8.001 0 01-15.357-2A8.001 8.001 0 0120 12c0-2.972-1.154-5.661-3.042-7.707"></path></svg>
+                    </button>`;
+                }
+
+                return `
+                <div class="address-item flex items-center justify-between gap-3 p-2 rounded-md hover:bg-black/10" data-index="${index}">
+                    <div class="flex items-center gap-3 cursor-pointer min-w-0">
+                        <div class="flex-shrink-0">
+                            <div class="${pinClass}" style="width: 28px; height: 28px; font-size: 13px; line-height: 28px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">${pinContent}</div>
+                        </div>
+                        <div class="text-sm font-medium truncate ${isError ? 'text-red-600' : 'text-gray-800'}" title="${addressText}">${addressText}</div>
+                    </div>
+                    <div class="flex-shrink-0">${actionButton}</div>
+                </div>
+                `;
+            }).join('');
+
+            // Add event listeners for the "retry" buttons
+            listEl.querySelectorAll('.retry-address-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const indexToRetry = parseInt(e.target.dataset.index, 10);
+                    if (!isNaN(indexToRetry)) {
+                        fetchAddressForPin(indexToRetry, true); // force retry
+                    }
+                });
+            });
+
+            // Add event listeners for panning to pin
+            listEl.querySelectorAll('.address-item').forEach(itemEl => {
+                itemEl.addEventListener('click', (e) => {
+                    // Prevent clicking the retry button from also panning
+                    if (e.target.closest('.retry-address-btn')) {
+                        return;
+                    }
+                    const indexToPan = parseInt(itemEl.dataset.index, 10);
+                    if (!isNaN(indexToPan)) {
+                        panToPin(indexToPan);
+                    }
+                });
+            });
+        }
+
+
+        /**
+         * Fetches a human-readable address from geographic coordinates using MapTiler API.
+         * @param {maptilersdk.LngLat} lngLat The coordinates to reverse geocode.
+         * @returns {Promise<string>} A promise that resolves to the address string.
+         */
+        async function getAddressFromCoordinates(lngLat) {
+            const url = `https://api.maptiler.com/geocoding/${lngLat.lng},${lngLat.lat}.json?key=${CONFIG.MAPTILER_API_KEY}&language=el`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Network response was not ok.');
+            }
+            const data = await response.json();
+            if (data.features && data.features.length > 0) {
+                return data.features[0].place_name;
+            } else {
+                throw new Error('No address found for these coordinates.');
+            }
+        }
+
+        /**
+         * Fetches and updates the address for a specific pin.
+         * @param {number} index The index of the pin in the state.pins array.
+         * @param {boolean} [force=false] If true, refetches the address even if it already exists.
+         */
+        async function fetchAddressForPin(index, force = false) {
+            if (index < 0 || index >= state.pinAddresses.length) return;
+
+            const item = state.pinAddresses[index];
+            if (!item) return;
+
+            // Don't refetch if already successful, unless forced
+            if (item.status === 'success' && !force) return;
+            // Don't start a new fetch if one is already in progress
+            if (item.status === 'loading') return;
+
+            item.status = 'loading';
+            renderAddressList();
+
+            try {
+                const address = await getAddressFromCoordinates(item.lngLat);
+                if (typeof address === 'string' || address instanceof String) {
+                    item.address = address;
+                    item.status = 'success';
+                } else {
+                    throw new Error("Invalid address format received.");
+                }
+            } catch (error) {
+                console.error(`Failed to fetch address for pin ${index}:`, error);
+                item.address = error.message; // Store error message
+                item.status = 'error';
+            }
+            
+            renderAddressList();
+        }
+
+        /**
+         * Retries fetching addresses for all pins that previously failed.
+         */
+        function retryFailedAddresses() {
+            state.pinAddresses.forEach((item, index) => {
+                if (item.status === 'error') {
+                    fetchAddressForPin(index, true); // Force retry
+                }
+            });
+        }
+
+        function panToPin(index) {
+            if (state.pins[index]) {
+                state.map.flyTo({ center: state.pins[index], zoom: 16 });
+                
+                // Remove highlight from previously selected marker
+                if (state.selectedMarkerIndex !== -1 && state.markers[state.selectedMarkerIndex]) {
+                    state.markers[state.selectedMarkerIndex].getElement().classList.remove('selected');
+                }
+                
+                state.selectedMarkerIndex = index;
+                
+                // Add highlight to the new selected marker
+                if (state.markers[index]) {
+                    state.markers[index].getElement().classList.add('selected');
+                }
+            }
+        }
+                // --- DUPLICATED BLOCK REMOVED ---
 
         let rightClickLatLng = null; // Stores the LngLat of the right-click event
         let insertIndex = -1; // Stores the calculated index for waypoint insertion
@@ -1096,7 +1281,12 @@
         }
 
         function setupEventListeners() {
-            document.getElementById('clearRoute').addEventListener('click', () => clearRoute(true));
+            document.getElementById('clearRoute').addEventListener('click', () => {
+            state.pins = [];
+            state.pinAddresses = [];
+            renderAddressList();
+            clearRoute(true)
+        });
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
             document.getElementById('uploadGPX').addEventListener('click', () => document.getElementById('gpx-file-input').click());
             document.getElementById('gpx-file-input').addEventListener('change', handleGpxFileUpload);
@@ -1207,7 +1397,7 @@
                 state.isAddressPanelVisible = !state.isAddressPanelVisible;
                 addressPanel.classList.toggle('menu-hidden', !state.isAddressPanelVisible);
                 if (state.isAddressPanelVisible) {
-                    debouncedFetchAddresses(); // Refresh addresses when opening
+                    renderAddressList(); // Render the current state when opening
                 }
             });
 
@@ -1216,8 +1406,8 @@
                 addressPanel.classList.add('menu-hidden');
             });
 
-            addressPanelReload.addEventListener('click', () => {
-                debouncedFetchAddresses(); // Force a refresh
+            document.getElementById('addressPanelReload').addEventListener('click', () => {
+                retryFailedAddresses(); // Retry only failed addresses
             });
 
             // This function sets up all our custom sources and layers.
@@ -1405,6 +1595,9 @@
         function restoreState(snapshot) {
             // MapTiler uses LngLat object, which is compatible with {lng, lat}
             state.pins = snapshot.pins.map(p => new maptilersdk.LngLat(p.lng, p.lat));
+            state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
+            state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
+
             state.isRoundTrip = snapshot.isRoundTrip;
             state.showSteepHighlight = snapshot.showSteepHighlight ?? false;
             
@@ -1611,6 +1804,9 @@
 
                     clearRoute(true); // Clear everything before loading
                     state.pins = newPins;
+                    state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
+                    state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
+
                     redrawFromState();
                     saveState();
                     showMessage(`Η διαδρομή από το αρχείο GPX φορτώθηκε με ${newPins.length} σημεία.`, 'success');
@@ -1640,6 +1836,9 @@
             
             const latlng = e.lngLat;
             state.pins.push(latlng);
+            state.pinAddresses.push({ status: 'empty', address: null, lngLat: latlng });
+            fetchAddressForPin(state.pins.length - 1);
+
             addMarker(latlng, state.pins.length);
             
             if (state.pins.length >= 2) {
@@ -1745,6 +1944,8 @@
             }
 
             state.pins.splice(index, 0, latlng);
+            state.pinAddresses.splice(index, 0, { status: 'empty', address: null, lngLat: latlng });
+            fetchAddressForPin(index);
             
             redrawFromState(); // Easiest way to re-number and re-draw everything
             saveState();
@@ -1765,7 +1966,15 @@
             marker.on('dragend', () => {
                 const markerIndex = state.markers.indexOf(marker);
                 if (markerIndex > -1) {
-                    state.pins[markerIndex] = marker.getLngLat();
+                    const newLngLat = marker.getLngLat();
+                    state.pins[markerIndex] = newLngLat;
+                    
+                    // Update address state and refetch
+                    if(state.pinAddresses[markerIndex]) {
+                        state.pinAddresses[markerIndex].lngLat = newLngLat;
+                        fetchAddressForPin(markerIndex, true); // Force refetch for new location
+                    }
+
                     if (state.pins.length >= 2) calculateRoute();
                     saveState();
                 }
@@ -1780,8 +1989,11 @@
             
             state.markers[index].remove();
             state.pins.splice(index, 1);
+            state.pinAddresses.splice(index, 1); // Remove address
             state.markers.splice(index, 1);
             
+            renderAddressList(); // Update address list UI
+
             // Re-draw everything to update numbers correctly
             redrawFromState();
             saveState();
@@ -2058,167 +2270,7 @@
             document.getElementById('search-magnifying-glass').classList.toggle('hidden', isLoading);
         }
 
-        // --- ADDRESS PANEL LOGIC ---
-        const debouncedFetchAddresses = debounce(fetchAllPinAddresses, 500);
-
-        // This function renders the content of the address list
-        function renderAddressList() {
-            const addressList = document.getElementById('addressList');
-            const noAddressesMessage = document.getElementById('no-addresses-message');
-            const errorMessages = ["Σφάλμα φόρτωσης", "Σφάλμα δικτύου", "Άγνωστη τοποθεσία", "Περιοχή χωρίς όνομα"];
-
-            if (state.pinAddresses.length === 0 && state.pins.length > 0) {
-                addressList.innerHTML = '<div class="flex justify-center items-center p-4"><div class="loading-spinner"></div></div>';
-                if(noAddressesMessage) noAddressesMessage.style.display = 'none';
-                return;
-            }
-
-            if (state.pins.length === 0) {
-                addressList.innerHTML = '';
-                if(noAddressesMessage) noAddressesMessage.style.display = 'block';
-                return;
-            }
-            
-            if(noAddressesMessage) noAddressesMessage.style.display = 'none';
-            addressList.innerHTML = state.pinAddresses.map((address, index) => {
-                const isError = errorMessages.includes(address) || address === "Φόρτωση...";
-                const isLoading = address === "Φόρτωση...";
-
-                const isStart = index === 0;
-                let pinClass = 'pin-icon';
-                let pinContent = index + 1;
-                if (isStart) {
-                    pinClass += ' start';
-                    if (state.isRoundTrip && state.pins.length > 1) {
-                        pinClass += ' flag';
-                        pinContent = '🏁';
-                    }
-                }
-
-                let actionButton = '';
-                if (isLoading) {
-                    actionButton = '<div class="search-spinner" style="width: 16px; height: 16px;"></div>';
-                } else if (isError) {
-                    actionButton = `<button class="p-1 rounded-full hover:bg-gray-400/30" onclick="event.stopPropagation(); retryAddress(${index});" title="Επανάληψη">
-                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004 12c0 2.972 1.154 5.661 3.042 7.707M20 20v-5h-.581m0 0a8.001 8.001 0 01-15.357-2A8.001 8.001 0 0120 12c0-2.972-1.154-5.661-3.042-7.707"></path></svg>
-                    </button>`;
-                }
-
-                return `
-                <div class="flex items-center justify-between gap-3 p-2 rounded-md hover:bg-black/10">
-                    <div class="flex items-center gap-3 cursor-pointer min-w-0" onclick="panToPin(${index})">
-                        <div class="flex-shrink-0">
-                            <div class="${pinClass}" style="width: 28px; height: 28px; font-size: 13px; line-height: 28px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">${pinContent}</div>
-                        </div>
-                        <div class="text-sm font-medium truncate ${isError && !isLoading ? 'text-red-600' : 'text-gray-800'}" title="${address}">${address}</div>
-                    </div>
-                    <div class="flex-shrink-0">${actionButton}</div>
-                </div>
-            `}).join('');
-        }
-
-        async function retryAddress(index) {
-            if (index < 0 || index >= state.pins.length) return;
-
-            const pin = state.pins[index];
-            
-            // Show loading state for this specific item
-            state.pinAddresses[index] = "Φόρτωση...";
-            renderAddressList();
-
-            // Fetch the address
-            const address = await reverseGeocode(pin.lat, pin.lng);
-
-            // Update the state
-            state.pinAddresses[index] = address;
-
-            // Re-render the list to show the new address or error
-            renderAddressList();
-        }
-
-        async function fetchAllPinAddresses() {
-            if (state.pins.length === 0) {
-                state.pinAddresses = [];
-                renderAddressList();
-                return;
-            }
-
-            // Initialize with placeholder text
-            state.pinAddresses = Array(state.pins.length).fill("Φόρτωση...");
-            renderAddressList(); // Initial render with placeholders
-
-            for (let i = 0; i < state.pins.length; i++) {
-                const pin = state.pins[i];
-                const address = await reverseGeocode(pin.lat, pin.lng);
-                state.pinAddresses[i] = address;
-                renderAddressList(); // Re-render the list with the newly fetched address
-
-                // Wait before the next request, but not after the last one.
-                if (i < state.pins.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 1100));
-                }
-            }
-        }
-
-        async function reverseGeocode(lat, lng) {
-            try {
-                const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=el`;
-                const response = await fetch(url);
-                if (!response.ok) return "Άγνωστη τοποθεσία";
-                const data = await response.json();
-                
-                if (data.error) {
-                    console.warn("Reverse geocoding error:", data.error);
-                    return data.display_name || "Περιοχή χωρίς όνομα";
-                }
-                
-                const address = data.address;
-                if (!address) return data.display_name || "Άγνωστη τοποθεσία";
-
-                const road = address.road || '';
-                const house_number = address.house_number || '';
-                const suburb = address.suburb || '';
-                const city = address.city || address.town || address.village || '';
-
-                let line1 = `${road} ${house_number}`.trim();
-                
-                if (line1 && city && line1 !== city) {
-                     return `${line1}, ${city}`;
-                } else if (line1) {
-                    return line1;
-                } else if (suburb && city && suburb !== city) {
-                    return `${suburb}, ${city}`;
-                } else if (suburb) {
-                    return suburb;
-                } else if (city) {
-                    return city;
-                }
-
-                return data.display_name.split(',').slice(0, 2).join(',');
-
-            } catch (error) {
-                console.error("Reverse geocoding error:", error);
-                return "Σφάλμα δικτύου";
-            }
-        }
-
-        function panToPin(index) {
-            if (state.pins[index]) {
-                state.map.flyTo({ center: state.pins[index], zoom: 16 });
-                
-                // Remove highlight from previously selected marker
-                if (state.selectedMarkerIndex !== -1 && state.markers[state.selectedMarkerIndex]) {
-                    state.markers[state.selectedMarkerIndex].getElement().classList.remove('selected');
-                }
-                
-                state.selectedMarkerIndex = index;
-                
-                // Add highlight to the new selected marker
-                if (state.markers[index]) {
-                    state.markers[index].getElement().classList.add('selected');
-                }
-            }
-        }
+        // --- OLD, CONFLICTING ADDRESS LOGIC REMOVED ---
 
         // --- ROUTE & ELEVATION CALCULATION ---
         async function calculateRoute() {
