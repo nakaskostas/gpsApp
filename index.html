@@ -776,7 +776,7 @@
                 document.getElementById('contextMenu'),
                 document.getElementById('hide-panel-button'),
                 document.getElementById('show-panel-button'),
-                document.querySelector('.leaflet-control-container')
+                ...document.querySelectorAll('.maptiler-control-container, .maplibregl-control-container')
             ];
             const originalDisplays = new Map();
             const bottomPanel = document.getElementById('bottomPanel');
@@ -840,7 +840,14 @@
                     bottomPanel.style.webkitBackdropFilter = 'none';
                 }
 
-                await new Promise(resolve => setTimeout(resolve, 250));
+                // Wait for map to be fully rendered before taking screenshot
+                state.map.triggerRepaint();
+                await new Promise(resolve => {
+                    state.map.once('idle', () => {
+                        // A short timeout after idle seems to help html-to-image capture the final state
+                        setTimeout(resolve, 100);
+                    });
+                });
 
                 const mapImageData = await htmlToImage.toPng(document.body, {
                     quality: 0.95,
@@ -975,6 +982,7 @@
                 center: [CONFIG.DEFAULT_CENTER[1], CONFIG.DEFAULT_CENTER[0]],
                 zoom: CONFIG.DEFAULT_ZOOM,
                 hash: false,
+                preserveDrawingBuffer: true
             });
 
             state.mapStyles = {
