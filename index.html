@@ -1501,6 +1501,13 @@
                                     displayColoredRoute(state.currentRoute.coordinates);
                                 }
                             });
+                
+                            document.getElementById('elevationChart').addEventListener('mouseleave', () => {
+                                if (state.highlightMarker) {
+                                    state.highlightMarker.remove();
+                                    state.highlightMarker = null;
+                                }
+                            });
                         }
                     });
                 }
@@ -2694,9 +2701,8 @@
                                             if (coord) {
                                                 const lngLat = [coord[1], coord[0]]; // MapTiler is Lng, Lat
                                                 if (!state.highlightMarker) {
-                                                    const el = document.createElement('div');
-                                                    el.className = 'elevation-highlight-marker';
-                                                    state.highlightMarker = new maptilersdk.Marker(el)
+                                                    // Use a blue marker that matches the app's theme
+                                                    state.highlightMarker = new maptilersdk.Marker({ color: '#3B82F6' })
                                                         .setLngLat(lngLat)
                                                         .addTo(state.map);
                                                 } else {
@@ -2711,12 +2717,7 @@
                                 }
                             });
                 
-                            document.getElementById('elevationChart').addEventListener('mouseleave', () => {
-                                if (state.highlightMarker) {
-                                    state.highlightMarker.remove();
-                                    state.highlightMarker = null;
-                                }
-                            });
+
                         }
                         
                         // --- UTILITY & HELPER FUNCTIONS ---
