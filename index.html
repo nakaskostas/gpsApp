@@ -1830,33 +1830,76 @@
         
         // --- LOCATION SEARCH LOGIC ---
         function getConciseLocationName(item) {
-            const primaryName = item.name;
-            if (!primaryName) return item.display_name;
-
-            const secondaryName = item.address?.city || item.address?.town || item.address?.village;
-            
-            let displayText = primaryName;
-            if (secondaryName && primaryName !== secondaryName) {
-                 displayText += `, ${secondaryName}`;
-            }
-            return displayText;
+            // MapTiler features have a 'text' property for the main name
+            // and 'place_name' for the full address.
+            // We prefer the 'text' property for a concise name.
+            return item.text || item.place_name;
         }
 
         async function fetchSearchSuggestions(query) {
-            if (!query.trim()) {
+            const trimmedQuery = query.trim();
+            if (!trimmedQuery) {
                 clearSuggestions();
                 setSearchLoading(false);
                 return;
             }
 
+            // Regex to detect "lat, lon" or "lat lon" patterns
+            const coordRegex = /^\s*(-?\d{1,2}(\.\d+)?)\s*[, ]\s*(-?\d{1,3}(\.\d+)?)\s*$/;
+            const match = trimmedQuery.match(coordRegex);
+
+            if (match) {
+                setSearchLoading(true);
+                try {
+                    const lat = parseFloat(match[1]);
+                    const lon = parseFloat(match[3]);
+
+                    // Validate coordinate ranges
+                    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+                        // Manually create a GeoJSON-like feature
+                        const customFeature = {
+                            id: 'custom-coordinate-' + Date.now(),
+                            type: 'Feature',
+                            place_name: `Συντεταγμένες: ${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+                            text: 'Επιλεγμένες Συντεταγμένες',
+                            center: [lon, lat],
+                            geometry: {
+                                type: 'Point',
+                                coordinates: [lon, lat]
+                            },
+                            properties: {}
+                        };
+                        
+                        state.searchSuggestions = [customFeature];
+                        renderSuggestions([customFeature]);
+                    } else {
+                        clearSuggestions(); // Invalid coordinates
+                    }
+                } catch (e) {
+                    clearSuggestions();
+                } finally {
+                    setSearchLoading(false);
+                }
+                return; // Stop here for coordinate input
+            }
+
+
+            // If not a coordinate, proceed with the text search
             try {
-                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&countrycodes=gr&accept-language=el`;
+                // Construct the URL for MapTiler Geocoding API
+                const proximity = state.map.getCenter();
+                const proximityParam = `&proximity=${proximity.lng},${proximity.lat}`;
+                const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(trimmedQuery)}.json?key=${CONFIG.MAPTILER_API_KEY}&country=GR&language=el&limit=5${proximityParam}`;
+
                 const response = await fetch(url);
-                if (!response.ok) throw new Error('Η υπηρεσία αναζήτησης δεν είναι διαθέσιμη.');
-                const data = await response.json();
+                if (!response.ok) throw new Error('Η υπηρεσία αναζήτησης MapTiler δεν είναι διαθέσιμη.');
                 
-                state.searchSuggestions = data;
-                renderSuggestions(data);
+                const results = await response.json();
+
+                if (!results || !results.features) throw new Error('Δεν βρέθηκαν αποτελέσματα.');
+                
+                state.searchSuggestions = results.features;
+                renderSuggestions(results.features);
             } catch (error) {
                 console.error('Search error:', error);
                 clearSuggestions();
@@ -1891,7 +1934,7 @@
 
                     activeSearchTooltip = document.createElement('div');
                     activeSearchTooltip.className = 'search-result-tooltip';
-                    activeSearchTooltip.innerHTML = currentItem.display_name;
+                    activeSearchTooltip.innerHTML = currentItem.place_name;
                     document.body.appendChild(activeSearchTooltip);
 
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -1924,8 +1967,9 @@
         }
 
         function selectSuggestion(item) {
-            const lat = parseFloat(item.lat);
-            const lon = parseFloat(item.lon);
+            // item is a GeoJSON feature from MapTiler
+            const lon = item.center[0];
+            const lat = item.center[1];
             
             if (state.searchResultMarker) {
                 state.searchResultMarker.remove();
@@ -1934,7 +1978,7 @@
             state.map.flyTo({ center: [lon, lat], zoom: 15 });
 
             const popup = new maptilersdk.Popup({ offset: 25, closeButton: false })
-                .setHTML(`<b>${item.display_name}</b>`);
+                .setHTML(`<b>${item.place_name}</b>`); // Use place_name for the full address
 
             state.searchResultMarker = new maptilersdk.Marker({color: "#FF0000"})
               .setLngLat([lon, lat])
