@@ -1239,6 +1239,7 @@
         // --- UI ELEMENTS & SHARED VARIABLES ---
         let bottomPanel, hidePanelButton, showPanelButton;
         let activeSearchTooltip = null; // NEW: Variable to hold the active search result tooltip
+        let markerRemovalTimer = null; // Timer to control the removal of the elevation highlight marker
 
         // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', initApp);
@@ -1459,6 +1460,29 @@
             hidePanelButton.addEventListener('click', hideBottomPanel);
             showPanelButton.addEventListener('click', showBottomPanel);
 
+            // Event listeners for the elevation highlight marker
+            const bottomPanelEl = document.getElementById('bottomPanel');
+            bottomPanelEl.addEventListener('mouseleave', () => {
+                // Start a timer to remove the marker after 5 seconds
+                if (state.highlightMarker) {
+                    markerRemovalTimer = setTimeout(() => {
+                        if (state.highlightMarker) {
+                            state.highlightMarker.remove();
+                            state.highlightMarker = null;
+                        }
+                        markerRemovalTimer = null;
+                    }, 5000);
+                }
+            });
+
+            bottomPanelEl.addEventListener('mouseenter', () => {
+                // If the mouse re-enters, cancel the removal timer
+                if (markerRemovalTimer) {
+                    clearTimeout(markerRemovalTimer);
+                    markerRemovalTimer = null;
+                }
+            });
+
             // Toggles listeners
             document.getElementById('roundTripToggle').addEventListener('change', handleRoundTripToggle);
             document.getElementById('steepUphillToggle').addEventListener('change', handleSteepUphillToggle);
@@ -1603,13 +1627,6 @@
                                 // A final check in case the user cleared the route while the style was changing
                                 if (state.currentRoute) {
                                     displayColoredRoute(state.currentRoute.coordinates);
-                                }
-                            });
-                
-                            document.getElementById('elevationChart').addEventListener('mouseleave', () => {
-                                if (state.highlightMarker) {
-                                    state.highlightMarker.remove();
-                                    state.highlightMarker = null;
                                 }
                             });
                         }
