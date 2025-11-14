@@ -315,6 +315,25 @@
         .drag-handle {
             cursor: move;
         }
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 15px;
+            height: 15px;
+            cursor: nwse-resize;
+            z-index: 10;
+        }
+        .resize-handle::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 8px;
+            height: 8px;
+            border-bottom: 2px solid rgba(0,0,0,0.3);
+            border-right: 2px solid rgba(0,0,0,0.3);
+        }
 
 
 
@@ -364,6 +383,7 @@
             <div id="addressList" class="overflow-y-auto pr-2">
                 <p id="no-addresses-message" class="text-gray-500 text-sm">Προσθέστε σημεία στη διαδρομή για να δείτε τις διευθύνσεις.</p>
             </div>
+            <div id="resizeHandle" class="resize-handle"></div>
         </div>
         
         <!-- Top Right Buttons -->
@@ -1271,15 +1291,36 @@
             }
         }
 
+        function updateAddressListHeight() {
+            const panel = document.getElementById('addressPanel');
+            const header = document.getElementById('addressPanelHeader');
+            const list = document.getElementById('addressList');
+
+            if (!panel || !header || !list || panel.classList.contains('menu-hidden')) return;
+
+            const panelStyle = window.getComputedStyle(panel);
+            const headerStyle = window.getComputedStyle(header);
+
+            const panelPaddingTop = parseInt(panelStyle.paddingTop, 10);
+            const panelPaddingBottom = parseInt(panelStyle.paddingBottom, 10);
+            const headerTotalHeight = header.offsetHeight + parseInt(headerStyle.marginBottom, 10);
+            
+            const availableHeight = panel.offsetHeight - panelPaddingTop - panelPaddingBottom - headerTotalHeight;
+
+            list.style.maxHeight = Math.max(0, availableHeight) + 'px';
+        }
+
         // --- DRAGGABLE ELEMENTS LOGIC ---
         let isDragging = false; // Flag to differentiate between a drag and a click
         function initializeDraggableElements() {
             const addressPanel = document.getElementById('addressPanel');
             const addressPanelHeader = document.getElementById('addressPanelHeader');
             const addressToggleContainer = document.getElementById('addressToggleContainer');
+            const resizeHandle = document.getElementById('resizeHandle');
 
             makeDraggable(addressPanel, addressPanelHeader);
             makeDraggable(addressToggleContainer, addressToggleContainer);
+            makeResizable(addressPanel, resizeHandle);
         }
 
         function makeDraggable(elmnt, handle) {
@@ -1336,6 +1377,56 @@
 
             function closeDragElement() {
                 // stop moving when mouse button is released:
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
+
+        function makeResizable(elmnt, handle) {
+            let initialWidth = 0, initialHeight = 0;
+            let initialX = 0, initialY = 0;
+            const minWidth = 280;
+            const minHeight = 200;
+
+            handle.onmousedown = resizeMouseDown;
+
+            function resizeMouseDown(e) {
+                e = e || window.event;
+                e.preventDefault();
+                e.stopPropagation(); // Prevent drag from starting
+
+                initialWidth = elmnt.offsetWidth;
+                initialHeight = elmnt.offsetHeight;
+                initialX = e.clientX;
+                initialY = e.clientY;
+
+                document.onmouseup = closeResizeElement;
+                document.onmousemove = elementResize;
+            }
+
+            function elementResize(e) {
+                e = e || window.event;
+                e.preventDefault();
+
+                const dx = e.clientX - initialX;
+                const dy = e.clientY - initialY;
+
+                let newWidth = initialWidth + dx;
+                let newHeight = initialHeight + dy;
+
+                if (newWidth < minWidth) newWidth = minWidth;
+                if (newHeight < minHeight) newHeight = minHeight;
+
+                elmnt.style.width = newWidth + 'px';
+                elmnt.style.height = newHeight + 'px';
+
+                // Update the list height dynamically on resize
+                if (elmnt.id === 'addressPanel') {
+                    updateAddressListHeight();
+                }
+            }
+
+            function closeResizeElement() {
                 document.onmouseup = null;
                 document.onmousemove = null;
             }
@@ -1646,6 +1737,10 @@
                 // Reset the moved flag every time the panel is opened
                 state.isAddressPanelMoved = false;
 
+                // Reset panel size to default before showing
+                addressPanel.style.width = '';
+                addressPanel.style.height = '';
+
                 // Position the panel at the toggle's location, with edge correction
                 let newTop = state.lastTogglePosition.top;
                 let newLeft = state.lastTogglePosition.left;
@@ -1673,6 +1768,9 @@
 
                 state.isAddressPanelVisible = true;
                 renderAddressList();
+                // Use a short timeout to allow the browser to render the panel
+                // before calculating its height.
+                setTimeout(updateAddressListHeight, 50);
             });
 
             addressPanelClose.addEventListener('click', () => {
