@@ -312,6 +312,10 @@
             top: 90px; /* Position below address button */
         }
 
+        .drag-handle {
+            cursor: move;
+        }
+
 
 
         /* --- FONT SCALING FOR LARGE DISPLAYS --- */
@@ -342,12 +346,12 @@
         <div id="map"></div>
         
         <!-- Top Left Address Panel -->
-        <div class="absolute top-[210px] left-4 z-[1001]">
+        <div id="addressToggleContainer" class="absolute z-[1001] drag-handle" style="top: 210px; left: 1rem;">
             <button id="addressToggle" class="action-button" title="Εμφάνιση λίστας διευθύνσεων">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
             </button>
         </div>
-        <div id="addressPanel" class="absolute top-[260px] left-4 z-[1000] menu-hidden glass-panel rounded-lg shadow-md p-4 w-[320px]">
+        <div id="addressPanel" class="absolute z-[1000] menu-hidden glass-panel rounded-lg shadow-md p-4 w-[320px]" style="top: 260px; left: 1rem;">
             <div class="absolute top-2 right-2 flex gap-1 z-10"> <!-- New container for buttons -->
                 <button id="addressPanelReload" class="p-1 rounded-full hover:bg-gray-400/30 transition-colors" title="Ανανέωση λίστας">
                     <svg class="w-4 h-4 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004 12c0 2.972 1.154 5.661 3.042 7.707M20 20v-5h-.581m0 0a8.001 8.001 0 01-15.357-2A8.001 8.001 0 0120 12c0-2.972-1.154-5.661-3.042-7.707"></path></svg>
@@ -356,7 +360,7 @@
                     <svg class="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <h2 class="text-lg font-bold mb-2 text-gray-800">Σημεία Διαδρομής</h2>
+            <h2 id="addressPanelHeader" class="text-lg font-bold mb-2 text-gray-800 drag-handle" title="Μετακίνηση παραθύρου">Σημεία Διαδρομής</h2>
             <div id="addressList" class="overflow-y-auto pr-2">
                 <p id="no-addresses-message" class="text-gray-500 text-sm">Προσθέστε σημεία στη διαδρομή για να δείτε τις διευθύνσεις.</p>
             </div>
@@ -1078,9 +1082,10 @@
             highlightedSuggestionIndex: -1,
             isSearchLoading: false,
             // Address Panel state
-            // Address Panel state
             pinAddresses: [], // Will be an array of {status, address, lngLat} objects
             isAddressPanelVisible: false,
+            isAddressPanelMoved: false,
+            lastTogglePosition: { top: '210px', left: '1rem' },
         };
 
         // --- ADDRESS PANEL LOGIC ---
@@ -1265,6 +1270,76 @@
                 }
             }
         }
+
+        // --- DRAGGABLE ELEMENTS LOGIC ---
+        let isDragging = false; // Flag to differentiate between a drag and a click
+        function initializeDraggableElements() {
+            const addressPanel = document.getElementById('addressPanel');
+            const addressPanelHeader = document.getElementById('addressPanelHeader');
+            const addressToggleContainer = document.getElementById('addressToggleContainer');
+
+            makeDraggable(addressPanel, addressPanelHeader);
+            makeDraggable(addressToggleContainer, addressToggleContainer);
+        }
+
+        function makeDraggable(elmnt, handle) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            
+            handle.onmousedown = dragMouseDown;
+
+            function dragMouseDown(e) {
+                isDragging = false; // Reset flag on mousedown
+                e = e || window.event;
+                e.preventDefault();
+                // get the mouse cursor position at startup:
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                document.onmouseup = closeDragElement;
+                // call a function whenever the cursor moves:
+                document.onmousemove = elementDrag;
+            }
+
+            function elementDrag(e) {
+                isDragging = true; // Set flag to true if mouse moves while dragging
+                e = e || window.event;
+                e.preventDefault();
+                // calculate the new cursor position:
+                pos1 = pos3 - e.clientX;
+                pos2 = pos4 - e.clientY;
+                pos3 = e.clientX;
+                pos4 = e.clientY;
+                
+                // Calculate new element position
+                let newTop = elmnt.offsetTop - pos2;
+                let newLeft = elmnt.offsetLeft - pos1;
+
+                // Boundary collision detection
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                const elmntWidth = elmnt.offsetWidth;
+                const elmntHeight = elmnt.offsetHeight;
+
+                if (newLeft < 0) newLeft = 0;
+                if (newTop < 0) newTop = 0;
+                if (newLeft + elmntWidth > viewportWidth) newLeft = viewportWidth - elmntWidth;
+                if (newTop + elmntHeight > viewportHeight) newTop = viewportHeight - elmntHeight;
+
+                // set the element's new position:
+                elmnt.style.top = newTop + "px";
+                elmnt.style.left = newLeft + "px";
+
+                // If dragging the address panel, set the moved flag
+                if (elmnt.id === 'addressPanel') {
+                    state.isAddressPanelMoved = true;
+                }
+            }
+
+            function closeDragElement() {
+                // stop moving when mouse button is released:
+                document.onmouseup = null;
+                document.onmousemove = null;
+            }
+        }
                 // --- DUPLICATED BLOCK REMOVED ---
 
         let rightClickLatLng = null; // Stores the LngLat of the right-click event
@@ -1282,6 +1357,7 @@
             initMap();
             initUIElements();
             setupEventListeners();
+            initializeDraggableElements();
             
             if (!parseUrlAndRestore()) {
                 // saveState(); // TODO: Re-enable after refactoring saveState
@@ -1551,23 +1627,94 @@
             });
 
             // Address Panel listeners
+            const addressToggleContainer = document.getElementById('addressToggleContainer');
             const addressToggle = document.getElementById('addressToggle');
             const addressPanel = document.getElementById('addressPanel');
             const addressPanelClose = document.getElementById('addressPanelClose');
 
             addressToggle.addEventListener('click', () => {
+                if (isDragging) {
+                    isDragging = false; // Reset flag for next interaction
+                    return; // This was a drag, not a click. Ignore.
+                }
+
+                // Store the toggle's current position before showing the panel
+                state.lastTogglePosition = {
+                    top: addressToggleContainer.offsetTop,
+                    left: addressToggleContainer.offsetLeft
+                };
+                // Reset the moved flag every time the panel is opened
+                state.isAddressPanelMoved = false;
+
+                // Position the panel at the toggle's location, with edge correction
+                let newTop = state.lastTogglePosition.top;
+                let newLeft = state.lastTogglePosition.left;
+
+                const panelWidth = addressPanel.offsetWidth;
+                const panelHeight = addressPanel.offsetHeight;
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+
+                if (newLeft + panelWidth > viewportWidth) {
+                    newLeft = viewportWidth - panelWidth;
+                }
+                if (newTop + panelHeight > viewportHeight) {
+                    newTop = viewportHeight - panelHeight;
+                }
+                if (newLeft < 0) newLeft = 0;
+                if (newTop < 0) newTop = 0;
+
+                addressPanel.style.top = newTop + 'px';
+                addressPanel.style.left = newLeft + 'px';
+
                 // Show panel, hide toggle button
                 addressPanel.classList.remove('menu-hidden');
-                addressToggle.classList.add('hidden');
+                addressToggleContainer.classList.add('hidden');
 
                 state.isAddressPanelVisible = true;
                 renderAddressList();
             });
 
             addressPanelClose.addEventListener('click', () => {
+                let targetPosition;
+                // If panel was not moved, use the toggle's last saved position
+                if (!state.isAddressPanelMoved) {
+                    targetPosition = {
+                        top: state.lastTogglePosition.top,
+                        left: state.lastTogglePosition.left
+                    };
+                } else {
+                    // If panel was moved, use the panel's current position
+                    targetPosition = {
+                        top: addressPanel.offsetTop,
+                        left: addressPanel.offsetLeft
+                    };
+                }
+
+                // Position the toggle at the target location, with edge correction
+                let newLeft = targetPosition.left;
+                let newTop = targetPosition.top;
+
+                const toggleWidth = addressToggleContainer.offsetWidth;
+                const toggleHeight = addressToggleContainer.offsetHeight;
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+
+                if (newLeft + toggleWidth > viewportWidth) {
+                    newLeft = viewportWidth - toggleWidth;
+                }
+                if (newTop + toggleHeight > viewportHeight) {
+                    newTop = viewportHeight - toggleHeight;
+                }
+                if (newLeft < 0) newLeft = 0;
+                if (newTop < 0) newTop = 0;
+                
+                addressToggleContainer.style.left = newLeft + 'px';
+                addressToggleContainer.style.top = newTop + 'px';
+
                 // Hide panel, show toggle button
                 addressPanel.classList.add('menu-hidden');
-                addressToggle.classList.remove('hidden');
+                addressToggleContainer.classList.remove('hidden');
 
                 state.isAddressPanelVisible = false;
             });
