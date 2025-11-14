@@ -807,8 +807,38 @@
                 showMessage('Δεν υπάρχει διαδρομή για λήψη', 'error');
                 return;
             }
+
+            // Open the new tab immediately.
+            const newTab = window.open('', '_blank');
+
+            // Immediately try to bring focus back to the main window.
+            // This might not work in all browsers, but it's the best attempt.
+            window.focus();
+
+            if (!newTab) {
+                showMessage('Αποτυχία ανοίγματος νέας καρτέλας. Ελέγξτε τις ρυθμίσεις για pop-up.', 'error');
+                return;
+            }
+
+            // Write a clear, instructive message to the new tab.
+            const loadingMessage = `
+                <html>
+                    <head><title>Δημιουργία PDF</title></head>
+                    <body style="font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; background-color: #f0f0f0;">
+                        <h1 style="color: #333;">Η δημιουργία του PDF βρίσκεται σε εξέλιξη...</h1>
+                        <div style="background-color: #fff; border: 2px solid #F59E0B; border-radius: 8px; padding: 20px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 500px; width: 90%;">
+                            <p style="color: #F59E0B; font-size: 1.5em; font-weight: bold; margin: 0;">
+                                <span style="vertical-align: middle; margin-right: 10px;">⚠️</span> Παρακαλώ, επιστρέψτε στην καρτέλα του χάρτη για να ολοκληρωθεί η διαδικασία.
+                            </p>
+                        </div>
+                        <p style="color: #888; margin-top: 20px;">Αυτή η σελίδα θα ανανεωθεί αυτόματα μόλις το PDF είναι έτοιμο.</p>
+                    </body>
+                </html>`;
+            newTab.document.write(loadingMessage);
+
             if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined' || typeof htmlToImage === 'undefined') {
                 showMessage('Οι βιβλιοθήκες PDF ή εικόνας δεν έχουν φορτωθεί. Δοκιμάστε ξανά.', 'error');
+                newTab.close();
                 return;
             }
 
@@ -983,12 +1013,16 @@
 
                 pdf.addImage(mapImageData, 'PNG', posX, posY, finalImgW, finalImgH);
 
-                pdf.save('route-report.pdf');
+                // Generate the blob URL and redirect the already-opened tab.
+                const pdfBlob = pdf.output('blob');
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+                newTab.location.href = pdfUrl;
                 showMessage('Η δημιουργία του PDF ολοκληρώθηκε με επιτυχία.', 'success');
 
             } catch (error) {
                 console.error("PDF generation failed:", error);
                 showMessage('Η δημιουργία του PDF απέτυχε.', 'error');
+                newTab.close(); // Close the tab on error
             } finally {
                 document.body.removeChild(reportElement);
                 originalDisplays.forEach((display, el) => {
