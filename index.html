@@ -1556,16 +1556,20 @@
             const addressPanelClose = document.getElementById('addressPanelClose');
 
             addressToggle.addEventListener('click', () => {
-                state.isAddressPanelVisible = !state.isAddressPanelVisible;
-                addressPanel.classList.toggle('menu-hidden', !state.isAddressPanelVisible);
-                if (state.isAddressPanelVisible) {
-                    renderAddressList(); // Render the current state when opening
-                }
+                // Show panel, hide toggle button
+                addressPanel.classList.remove('menu-hidden');
+                addressToggle.classList.add('hidden');
+
+                state.isAddressPanelVisible = true;
+                renderAddressList();
             });
 
             addressPanelClose.addEventListener('click', () => {
-                state.isAddressPanelVisible = false;
+                // Hide panel, show toggle button
                 addressPanel.classList.add('menu-hidden');
+                addressToggle.classList.remove('hidden');
+
+                state.isAddressPanelVisible = false;
             });
 
             document.getElementById('addressPanelReload').addEventListener('click', () => {
