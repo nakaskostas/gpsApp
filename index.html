@@ -1310,6 +1310,53 @@
             list.style.maxHeight = Math.max(0, availableHeight) + 'px';
         }
 
+        function adjustPanelHeightForContent() {
+            const panel = document.getElementById('addressPanel');
+            // Don't run if panel is hidden or has been manually resized by the user
+            if (!panel || panel.classList.contains('menu-hidden') || panel.style.height) {
+                return;
+            }
+
+            const header = document.getElementById('addressPanelHeader');
+            const numItems = state.pinAddresses.length;
+            if (numItems === 0) { // If list is empty, do nothing, let it be small
+                return;
+            }
+
+            const itemsToShow = Math.min(numItems, 5);
+            
+            // Estimate heights
+            const itemHeight = 44; // Approx height of one .address-item
+            const panelStyle = window.getComputedStyle(panel);
+            const headerStyle = window.getComputedStyle(header);
+            const panelPaddingTop = parseInt(panelStyle.paddingTop, 10);
+            const panelPaddingBottom = parseInt(panelStyle.paddingBottom, 10);
+            const headerTotalHeight = header.offsetHeight + parseInt(headerStyle.marginBottom, 10);
+
+            const targetListHeight = itemsToShow * itemHeight;
+            const targetPanelHeight = headerTotalHeight + targetListHeight + panelPaddingTop + panelPaddingBottom;
+
+            panel.style.height = targetPanelHeight + 'px';
+
+            // After setting the panel height, update the list's max-height to fill it
+            updateAddressListHeight();
+        }
+
+        function removePin(index) {
+            if (index < 0 || index >= state.pins.length) return;
+
+            state.pins.splice(index, 1);
+            state.pinAddresses.splice(index, 1);
+
+            redrawFromState();
+            saveState();
+            
+            // Adjust panel height if it's open
+            const panel = document.getElementById('addressPanel');
+            if(panel) panel.style.height = ''; // Clear manual height to allow auto-adjust
+            adjustPanelHeightForContent();
+        }
+
         // --- DRAGGABLE ELEMENTS LOGIC ---
         let isDragging = false; // Flag to differentiate between a drag and a click
         function initializeDraggableElements() {
@@ -1591,7 +1638,12 @@
             state.pins = [];
             state.pinAddresses = [];
             renderAddressList();
-            clearRoute(true)
+            clearRoute(true);
+            // After clearing, the panel should shrink. We need to clear its height
+            // so adjustPanelHeightForContent can work properly if it's re-opened.
+            const panel = document.getElementById('addressPanel');
+            if(panel) panel.style.height = '';
+            adjustPanelHeightForContent();
         });
             document.getElementById('downloadGPX').addEventListener('click', downloadGPX);
             document.getElementById('uploadGPX').addEventListener('click', () => document.getElementById('gpx-file-input').click());
@@ -1770,7 +1822,12 @@
                 renderAddressList();
                 // Use a short timeout to allow the browser to render the panel
                 // before calculating its height.
-                setTimeout(updateAddressListHeight, 50);
+                setTimeout(() => {
+                    // First, auto-adjust the panel height based on content (up to 5 items)
+                    adjustPanelHeightForContent();
+                    // Then, ensure the inner list's max-height is correct for the new panel height
+                    updateAddressListHeight();
+                }, 50);
             });
 
             addressPanelClose.addEventListener('click', () => {
@@ -2017,6 +2074,7 @@
             
             redrawFromState();
             updateUndoButton();
+            setTimeout(adjustPanelHeightForContent, 50);
         }
 
         function redrawFromState() {
@@ -2221,6 +2279,7 @@
                     redrawFromState();
                     saveState();
                     showMessage(`Η διαδρομή από το αρχείο GPX φορτώθηκε με ${newPins.length} σημεία.`, 'success');
+                    setTimeout(adjustPanelHeightForContent, 50);
 
                 } catch (error) {
                     console.error("GPX parsing error:", error);
@@ -2257,6 +2316,7 @@
             }
             saveState();
             updateUIState();
+            adjustPanelHeightForContent();
         }
         
         function handleMapRightClick(e) {
