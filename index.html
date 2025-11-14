@@ -711,6 +711,54 @@
             return fullTableHtml;
         }
 
+        function getPdfWaypointsTableHtml(waypoints, isFirstPage, globalStartIndex = 0) {
+            const tableRowsHtml = waypoints.map((waypoint, index) => {
+                const pinNumber = globalStartIndex + index + 1;
+                let addressText;
+                switch (waypoint.status) {
+                    case 'success':
+                        addressText = waypoint.address || '-';
+                        break;
+                    case 'loading':
+                        addressText = 'Αναζήτηση...';
+                        break;
+                    case 'error':
+                        addressText = 'Μη διαθέσιμη';
+                        break;
+                    default: // 'empty' or other
+                        addressText = '-';
+                        break;
+                }
+                const coordsText = `${waypoint.lngLat.lat.toFixed(5)}, ${waypoint.lngLat.lng.toFixed(5)}`;
+
+                return `
+                    <div style="display: table-row; border-bottom: 1px solid #ccc;">
+                        <div style="display: table-cell; padding: 12px; text-align: center; width: 15%;">${pinNumber}</div>
+                        <div style="display: table-cell; padding: 12px; text-align: left; width: 55%;">${addressText}</div>
+                        <div style="display: table-cell; padding: 12px; text-align: center; width: 30%;">${coordsText}</div>
+                    </div>
+                `;
+            }).join('');
+
+            const title = isFirstPage ? 'Σημεία Διαδρομής' : 'Σημεία Διαδρομής (συνέχεια)';
+
+            return `
+                <h2 style="font-size: 20px; font-weight: bold; margin-top: 30px; margin-bottom: 10px; text-align: center;">${title}</h2>
+                <div style="display: table; width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px;">
+                    <div style="display: table-header-group; font-weight: bold; break-inside: avoid;">
+                        <div style="display: table-row; border-bottom: 2px solid #555;">
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 15%;">Σημείο</div>
+                            <div style="display: table-cell; padding: 12px; text-align: left; width: 55%;">Διεύθυνση</div>
+                            <div style="display: table-cell; padding: 12px; text-align: center; width: 30%;">Συντεταγμένες</div>
+                        </div>
+                    </div>
+                    <div style="display: table-row-group;">
+                        ${tableRowsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
         // Helper to measure the pixel height of the table header and a sample row.
         async function measurePdfElements(reportElement, sampleSegment) {
             const canvasScale = 2;
@@ -723,6 +771,27 @@
 
             // 2. Measure Header + One Row
             const tableWithOneRowHtml = getPdfSlopeTableHtml([sampleSegment], null, true);
+            reportElement.innerHTML = tableWithOneRowHtml;
+            const combinedCanvas = await html2canvas(reportElement, { scale: canvasScale });
+            const combinedHeight = combinedCanvas.height;
+
+            // 3. Calculate Row Height
+            const rowHeight = combinedHeight - headerHeight;
+
+            return { headerHeight, rowHeight };
+        }
+
+        async function measureWaypointsTableElements(reportElement, sampleWaypoint) {
+            const canvasScale = 2;
+            
+            // 1. Measure Header
+            const headerHtml = getPdfWaypointsTableHtml([], true); // Empty array, isFirstPage=true
+            reportElement.innerHTML = headerHtml;
+            const headerCanvas = await html2canvas(reportElement, { scale: canvasScale });
+            const headerHeight = headerCanvas.height;
+
+            // 2. Measure Header + One Row
+            const tableWithOneRowHtml = getPdfWaypointsTableHtml([sampleWaypoint], true);
             reportElement.innerHTML = tableWithOneRowHtml;
             const combinedCanvas = await html2canvas(reportElement, { scale: canvasScale });
             const combinedHeight = combinedCanvas.height;
@@ -789,7 +858,41 @@
                 const statsImgHeight = statsCanvas.height * contentWidthMM / statsCanvas.width;
                 pdf.addImage(statsImgData, 'PNG', margin, margin, contentWidthMM, statsImgHeight);
 
-                // --- Pages 2...N: Slope Analysis Table ---
+                // --- Page 2...N: Waypoints Table ---
+                if (state.pinAddresses && state.pinAddresses.length > 0) {
+                    // 1. Measure
+                    const { headerHeight, rowHeight } = await measureWaypointsTableElements(reportElement, state.pinAddresses[0]);
+                    
+                    // 2. Calculate rows per page
+                    const pageCanvasHeight = reportElement.offsetWidth * canvasScale * (pdfHeight / pdfWidth);
+                    const contentCanvasHeight = pageCanvasHeight - (margin * 2 * (pageCanvasHeight / pdfHeight));
+                    
+                    let rowsPerPage = Math.floor((contentCanvasHeight - headerHeight) / rowHeight);
+                    if (rowsPerPage <= 0) rowsPerPage = 1;
+
+                    // 3. Chunk waypoints
+                    const chunks = [];
+                    for (let i = 0; i < state.pinAddresses.length; i += rowsPerPage) {
+                        chunks.push(state.pinAddresses.slice(i, i + rowsPerPage));
+                    }
+
+                    // 4. Render each chunk to a new page
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunk = chunks[i];
+                        const currentGlobalStartIndex = i * rowsPerPage; // Calculate the starting index for this chunk
+                        const tableHtml = getPdfWaypointsTableHtml(chunk, i === 0, currentGlobalStartIndex);
+                        
+                        reportElement.innerHTML = tableHtml;
+                        const tableCanvas = await html2canvas(reportElement, { scale: canvasScale });
+                        const tableImgData = tableCanvas.toDataURL('image/png');
+                        const tableImgHeight = tableCanvas.height * contentWidthMM / tableCanvas.width;
+                        
+                        pdf.addPage();
+                        pdf.addImage(tableImgData, 'PNG', margin, margin, contentWidthMM, tableImgHeight);
+                    }
+                }
+
+                // --- Pages 3...N: Slope Analysis Table ---
                 const segments = generateSteepnessReport(state.currentRoute.coordinates);
                 if (segments.length > 0) {
                     const totalSteepDistance = segments.reduce((total, seg) => total + (seg.isSteep ? seg.distance : 0), 0);
@@ -881,6 +984,7 @@
                 pdf.addImage(mapImageData, 'PNG', posX, posY, finalImgW, finalImgH);
 
                 pdf.save('route-report.pdf');
+                showMessage('Η δημιουργία του PDF ολοκληρώθηκε με επιτυχία.', 'success');
 
             } catch (error) {
                 console.error("PDF generation failed:", error);
