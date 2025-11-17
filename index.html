@@ -826,46 +826,44 @@
             return { headerHeight, rowHeight };
         }
 
+        function showPdfBlockedDialog(pdfUrl) {
+            const dialog = document.getElementById('pdf-blocked-dialog');
+            const confirmBtn = document.getElementById('pdf-open-confirm');
+            const cancelBtn = document.getElementById('pdf-open-cancel');
+
+            // This function will be the event handler.
+            const handleConfirm = () => {
+                window.open(pdfUrl, '_blank');
+                hideDialog();
+            };
+
+            const hideDialog = () => {
+                dialog.classList.add('hidden');
+                // Clean up listeners to prevent them from stacking up if the dialog is shown multiple times.
+                confirmBtn.removeEventListener('click', handleConfirm);
+                cancelBtn.removeEventListener('click', hideDialog);
+            };
+
+            // Attach the listeners
+            confirmBtn.addEventListener('click', handleConfirm);
+            cancelBtn.addEventListener('click', hideDialog);
+
+            // Show the dialog
+            dialog.classList.remove('hidden');
+        }
+
         async function downloadRoutePDF() {
             if (!state.currentRoute) {
                 showMessage('Δεν υπάρχει διαδρομή για λήψη', 'error');
                 return;
             }
 
-            // Open the new tab immediately.
-            const newTab = window.open('', '_blank');
-
-            // Immediately try to bring focus back to the main window.
-            // This might not work in all browsers, but it's the best attempt.
-            window.focus();
-
-            if (!newTab) {
-                showMessage('Αποτυχία ανοίγματος νέας καρτέλας. Ελέγξτε τις ρυθμίσεις για pop-up.', 'error');
-                return;
-            }
-
-            // Write a clear, instructive message to the new tab.
-            const loadingMessage = `
-                <html>
-                    <head><title>Δημιουργία PDF</title></head>
-                    <body style="font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; background-color: #f0f0f0;">
-                        <h1 style="color: #333;">Η δημιουργία του PDF βρίσκεται σε εξέλιξη...</h1>
-                        <div style="background-color: #fff; border: 2px solid #F59E0B; border-radius: 8px; padding: 20px; margin-top: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 500px; width: 90%;">
-                            <p style="color: #F59E0B; font-size: 1.5em; font-weight: bold; margin: 0;">
-                                <span style="vertical-align: middle; margin-right: 10px;">⚠️</span> Παρακαλώ, επιστρέψτε στην καρτέλα του χάρτη για να ολοκληρωθεί η διαδικασία.
-                            </p>
-                        </div>
-                        <p style="color: #888; margin-top: 20px;">Αυτή η σελίδα θα ανανεωθεί αυτόματα μόλις το PDF είναι έτοιμο.</p>
-                    </body>
-                </html>`;
-            newTab.document.write(loadingMessage);
-
             if (typeof jspdf === 'undefined' || typeof html2canvas === 'undefined' || typeof htmlToImage === 'undefined') {
                 showMessage('Οι βιβλιοθήκες PDF ή εικόνας δεν έχουν φορτωθεί. Δοκιμάστε ξανά.', 'error');
-                newTab.close();
                 return;
             }
 
+            showMessage('Η δημιουργία του PDF βρίσκεται σε εξέλιξη...', 'success');
             showLoading(true);
 
             // --- Setup ---
@@ -892,7 +890,7 @@
             const elementsToHide = [
                 document.getElementById('menuPanel'),
                 document.getElementById('topRightControls'),
-                document.getElementById('addressToggle'),
+                document.getElementById('addressToggleContainer'),
                 document.getElementById('addressPanel'),
                 document.getElementById('instructions'),
                 document.getElementById('messageOverlay'),
@@ -1037,16 +1035,18 @@
 
                 pdf.addImage(mapImageData, 'PNG', posX, posY, finalImgW, finalImgH);
 
-                // Generate the blob URL and redirect the already-opened tab.
+                // Generate the blob URL and open it in a new tab.
                 const pdfBlob = pdf.output('blob');
                 const pdfUrl = URL.createObjectURL(pdfBlob);
-                newTab.location.href = pdfUrl;
-                showMessage('Η δημιουργία του PDF ολοκληρώθηκε με επιτυχία.', 'success');
+                
+                const newTab = window.open(pdfUrl, '_blank');
+                if (!newTab) {
+                    showPdfBlockedDialog(pdfUrl);
+                }
 
             } catch (error) {
                 console.error("PDF generation failed:", error);
                 showMessage('Η δημιουργία του PDF απέτυχε.', 'error');
-                newTab.close(); // Close the tab on error
             } finally {
                 document.body.removeChild(reportElement);
                 originalDisplays.forEach((display, el) => {
@@ -3377,5 +3377,17 @@
             document.getElementById('no-stats-message').classList.toggle('hidden', show);
         }
     </script>
+
+        <!-- PDF Blocked Dialog -->
+        <div id="pdf-blocked-dialog" class="absolute inset-0 bg-black/30 z-[6000] flex items-center justify-center hidden" style="backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);">
+            <div class="rounded-lg shadow-xl p-6 w-full max-w-md text-center bg-white/60 border border-white/30" style="backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+                <h3 class="text-lg font-bold text-gray-900 mb-3">Το PDF είναι έτοιμο</h3>
+                <p class="text-gray-800 font-medium mb-6">Ο browser σας εμπόδισε το αυτόματο άνοιγμα της προεπισκόπησης. Πατήστε "Άνοιγμα" για να τη δείτε σε νέα καρτέλα.</p>
+                <div class="flex justify-center gap-4">
+                    <button id="pdf-open-confirm" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 transition-colors shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Άνοιγμα</button>
+                    <button id="pdf-open-cancel" class="px-6 py-2 bg-gray-200/80 text-gray-800 font-semibold rounded-md hover:bg-gray-300 transition-colors shadow-sm">Ακύρωση</button>
+                </div>
+            </div>
+        </div>
 </body>
 </html>
