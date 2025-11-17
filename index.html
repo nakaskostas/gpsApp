@@ -551,11 +551,11 @@
             <h2 class="text-lg font-bold mb-4 text-gray-800 text-center">Στατιστικά Διαδρομής</h2>
             <div id="stats-content" class="grid grid-cols-4 gap-3">
                 <!-- Route Name -->
-                <div class="col-span-4 text-center p-3 rounded-lg shadow-inner bg-black/5">
+                <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
                     <div class="text-gray-600 text-xs uppercase tracking-wider font-semibold">Όνομα Διαδρομής</div>
                     <div id="routeNameContainer" class="relative group mt-1">
                         <span id="routeNameDisplay" class="font-bold text-xl text-gray-800 cursor-pointer block truncate px-8">--</span>
-                        <input type="text" id="routeNameInput" class="font-bold text-xl text-gray-800 w-full text-center bg-transparent border-b-2 border-blue-500 focus:outline-none hidden" />
+                        <input type="text" id="routeNameInput" maxlength="60" class="font-bold text-xl text-gray-800 w-full text-center bg-transparent border-b-2 border-blue-500 focus:outline-none hidden" />
                         <div id="routeNameEditIconContainer" class="absolute top-0 right-0 h-full flex items-center pr-2">
                             <svg class="w-5 h-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"></path></svg>
                         </div>
