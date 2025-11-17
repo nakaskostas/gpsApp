@@ -550,6 +550,17 @@
         <div id="stats-panel" class="w-full lg:w-[30%] p-4 border-r border-gray-200/50 overflow-y-auto h-1/2 lg:h-full">
             <h2 class="text-lg font-bold mb-4 text-gray-800 text-center">Στατιστικά Διαδρομής</h2>
             <div id="stats-content" class="grid grid-cols-4 gap-3">
+                <!-- Route Name -->
+                <div class="col-span-4 text-center p-3 rounded-lg shadow-inner bg-black/5">
+                    <div class="text-gray-600 text-xs uppercase tracking-wider font-semibold">Όνομα Διαδρομής</div>
+                    <div id="routeNameContainer" class="relative group mt-1">
+                        <span id="routeNameDisplay" class="font-bold text-xl text-gray-800 cursor-pointer block truncate px-8">--</span>
+                        <input type="text" id="routeNameInput" class="font-bold text-xl text-gray-800 w-full text-center bg-transparent border-b-2 border-blue-500 focus:outline-none hidden" />
+                        <div id="routeNameEditIconContainer" class="absolute top-0 right-0 h-full flex items-center pr-2">
+                            <svg class="w-5 h-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"></path></svg>
+                        </div>
+                    </div>
+                </div>
                 <!-- Total Distance -->
                 <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
@@ -669,9 +680,10 @@
             const totalDistance = document.getElementById('totalDistance').textContent;
             const steepUphillDistance = document.getElementById('steepUphillDistance').textContent;
             const elevationGain = document.getElementById('elevationGain').textContent;
+            const routeName = state.routeName && state.routeName !== '--' ? ` "${state.routeName}"` : '';
 
             return `
-                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής</h1>
+                <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής${routeName}</h1>
                 <h2 style="font-size: 20px; font-weight: bold; margin-bottom: 10px; text-align: center;">Στατιστικά</h2>
                 <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 16px;">
                     <tr style="border-bottom: 1px solid #ccc;"><td style="padding: 8px; font-weight: bold;">Συνολική Απόσταση:</td><td style="padding: 8px;">${totalDistance}</td></tr>
@@ -1106,7 +1118,91 @@
             isAddressPanelVisible: false,
             isAddressPanelMoved: false,
             lastTogglePosition: { top: '210px', left: '1rem' },
+            // Route Name state
+            routeName: '',
+            isRouteNameManuallySet: false,
         };
+
+        // --- ROUTE NAME LOGIC ---
+        function shortenAddress(fullAddress) {
+            if (!fullAddress || typeof fullAddress !== 'string') return '';
+            return fullAddress.split(',')[0].trim();
+        }
+
+        function updateDefaultRouteName() {
+            if (state.isRouteNameManuallySet) return;
+
+            const successfulPins = state.pinAddresses.filter(p => p.status === 'success');
+            if (successfulPins.length === 0) {
+                state.routeName = '--';
+                document.getElementById('routeNameDisplay').textContent = state.routeName;
+                return;
+            }
+
+            const firstPin = state.pinAddresses[0];
+            const lastPin = state.pinAddresses[state.pinAddresses.length - 1];
+
+            let newName = '--';
+
+            if (state.isRoundTrip && firstPin && firstPin.status === 'success') {
+                newName = `${shortenAddress(firstPin.address)} (Κυκλική)`;
+            } else {
+                if (state.pinAddresses.length === 1 && firstPin && firstPin.status === 'success') {
+                    newName = shortenAddress(firstPin.address);
+                } else if (state.pinAddresses.length > 1 && firstPin && firstPin.status === 'success' && lastPin && lastPin.status === 'success') {
+                    newName = `${shortenAddress(firstPin.address)} - ${shortenAddress(lastPin.address)}`;
+                }
+            }
+            
+            state.routeName = newName;
+            document.getElementById('routeNameDisplay').textContent = state.routeName;
+        }
+
+        function setupRouteNameEditor() {
+            const container = document.getElementById('routeNameContainer');
+            const display = document.getElementById('routeNameDisplay');
+            const input = document.getElementById('routeNameInput');
+            const editIcon = document.getElementById('routeNameEditIconContainer');
+
+            const startEditing = () => {
+                display.classList.add('hidden');
+                editIcon.classList.add('hidden');
+                input.classList.remove('hidden');
+                input.value = state.routeName === '--' ? '' : state.routeName;
+                input.focus();
+                input.select();
+            };
+
+            const stopEditing = (saveChanges) => {
+                if (saveChanges) {
+                    const newValue = input.value.trim();
+                    if (newValue) {
+                        state.routeName = newValue;
+                        state.isRouteNameManuallySet = true;
+                    } else {
+                        // If user clears the input, revert to default logic
+                        state.isRouteNameManuallySet = false;
+                        updateDefaultRouteName(); // Recalculate default
+                    }
+                }
+                display.textContent = state.routeName;
+                input.classList.add('hidden');
+                display.classList.remove('hidden');
+                editIcon.classList.remove('hidden');
+            };
+
+            display.addEventListener('click', startEditing);
+            editIcon.addEventListener('click', startEditing);
+
+            input.addEventListener('blur', () => stopEditing(true));
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    stopEditing(true);
+                } else if (e.key === 'Escape') {
+                    stopEditing(false);
+                }
+            });
+        }
 
         // --- ADDRESS PANEL LOGIC ---
 
@@ -1259,6 +1355,9 @@
                 item.status = 'error';
             }
             
+            if (item.status === 'success' && (index === 0 || index === state.pinAddresses.length - 1)) {
+                updateDefaultRouteName();
+            }
             renderAddressList();
         }
 
@@ -1496,6 +1595,7 @@
             initUIElements();
             setupEventListeners();
             initializeDraggableElements();
+            setupRouteNameEditor();
             
             if (!parseUrlAndRestore()) {
                 // saveState(); // TODO: Re-enable after refactoring saveState
@@ -2040,7 +2140,9 @@
             const snapshot = {
                 pins: state.pins.map(p => ({ lat: p.lat, lng: p.lng })),
                 isRoundTrip: state.isRoundTrip,
-                showSteepHighlight: state.showSteepHighlight
+                showSteepHighlight: state.showSteepHighlight,
+                routeName: state.routeName,
+                isRouteNameManuallySet: state.isRouteNameManuallySet,
             };
             state.history.push(snapshot);
             state.historyIndex++;
@@ -2068,9 +2170,12 @@
 
             state.isRoundTrip = snapshot.isRoundTrip;
             state.showSteepHighlight = snapshot.showSteepHighlight ?? false;
+            state.routeName = snapshot.routeName || '';
+            state.isRouteNameManuallySet = snapshot.isRouteNameManuallySet || false;
             
             document.getElementById('roundTripToggle').checked = state.isRoundTrip;
             document.getElementById('steepUphillToggle').checked = state.showSteepHighlight;
+            document.getElementById('routeNameDisplay').textContent = state.routeName || '--';
             
             redrawFromState();
             updateUndoButton();
@@ -2101,6 +2206,7 @@
             } else {
                 clearRoute(false); // This will also need refactoring
             }
+            updateDefaultRouteName();
             updateUIState();
         }
         
@@ -2109,7 +2215,8 @@
             if (state.pins.length === 0) return null;
 
             const pinString = state.pins.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
-            const dataString = `v1|${pinString}|${state.isRoundTrip}|${state.showSteepHighlight}`;
+            const namePart = state.isRouteNameManuallySet ? `|${state.routeName}` : '|';
+            const dataString = `v2|${pinString}|${state.isRoundTrip}|${state.showSteepHighlight}|${state.isRouteNameManuallySet}${namePart}`;
             const compressed = LZString.compressToEncodedURIComponent(dataString);
 
             const baseUrl = window.location.href.split('#')[0];
@@ -2137,33 +2244,40 @@
 
             try {
                 const decompressed = LZString.decompressFromEncodedURIComponent(hash);
-                if (!decompressed || !decompressed.startsWith('v1|')) {
+                if (!decompressed) return false;
+
+                const parts = decompressed.split('|');
+                const version = parts.shift();
+
+                let snapshot;
+
+                if (version === 'v1') {
+                    const showSteepHighlight = parts.pop() === 'true';
+                    const isRoundTrip = parts.pop() === 'true';
+                    const pins = parts.map(p => {
+                        const coords = p.split(',');
+                        return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
+                    });
+                    snapshot = { pins, isRoundTrip, showSteepHighlight, isRouteNameManuallySet: false, routeName: '' };
+                } else if (version === 'v2') {
+                    const routeName = parts.pop();
+                    const isRouteNameManuallySet = parts.pop() === 'true';
+                    const showSteepHighlight = parts.pop() === 'true';
+                    const isRoundTrip = parts.pop() === 'true';
+                    const pins = parts.map(p => {
+                        const coords = p.split(',');
+                        return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
+                    });
+                    snapshot = { pins, isRoundTrip, showSteepHighlight, isRouteNameManuallySet, routeName };
+                } else {
                     console.warn('Invalid or old share link format.');
                     return false;
                 }
 
-                const parts = decompressed.split('|');
-                parts.shift(); // remove "v1"
-
-                const showSteepHighlight = parts.pop() === 'true';
-                const isRoundTrip = parts.pop() === 'true';
-
-                const pins = parts.map(p => {
-                    const coords = p.split(',');
-                    // Return an object compatible with maptilersdk.LngLat
-                    return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
-                });
-
-                if (pins.length > 0) {
-                    const snapshot = { 
-                        pins: pins, 
-                        isRoundTrip,
-                        showSteepHighlight
-                    };
+                if (snapshot.pins.length > 0) {
                     state.history = [snapshot];
                     state.historyIndex = 0;
                     
-                    // Wait for map to be loaded before restoring state
                     if (state.map.isStyleLoaded()) {
                         restoreState(snapshot);
                     } else {
@@ -2190,7 +2304,7 @@
             let gpx = `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" creator="WebApp Route Planner">
  <metadata>
-  <name>Διαδρομή από WebApp</name>
+  <name>${state.routeName || 'Διαδρομή από WebApp'}</name>
   <time>${new Date().toISOString()}</time>
  </metadata>
 `;
@@ -2205,7 +2319,7 @@
 
             // Add track if a route is calculated
             if (state.currentRoute && state.currentRoute.coordinates.length > 0) {
-                gpx += ' <trk>\n  <name>Υπολογισμένη Διαδρομή</name>\n  <trkseg>\n';
+                gpx += ` <trk>\n  <name>${state.routeName || 'Υπολογισμένη Διαδρομή'}</name>\n  <trkseg>\n`;
                 state.currentRoute.coordinates.forEach(coord => {
                     gpx += `   <trkpt lat="${coord[0]}" lon="${coord[1]}"><ele>${coord[2] || 0}</ele></trkpt>\n`;
                 });
@@ -2275,6 +2389,13 @@
                     state.pins = newPins;
                     state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
                     state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
+
+                    const routeNameTag = xmlDoc.querySelector('metadata > name');
+                    if (routeNameTag && routeNameTag.textContent) {
+                        state.routeName = routeNameTag.textContent;
+                        state.isRouteNameManuallySet = true;
+                        document.getElementById('routeNameDisplay').textContent = state.routeName;
+                    }
 
                     redrawFromState();
                     saveState();
@@ -2503,6 +2624,7 @@
         function handleRoundTripToggle(e) {
             state.isRoundTrip = e.target.checked;
             updateFirstMarkerIcon();
+            updateDefaultRouteName();
             if (state.pins.length >= 2) {
                 calculateRoute();
             } else if (!state.isRoundTrip) {
@@ -3185,21 +3307,25 @@
                         }
                         
                         // --- UTILITY & HELPER FUNCTIONS ---
-                        function clearRoute(clearPins) {
-                            if (clearPins) {
-                                state.markers.forEach(marker => marker.remove());
-                                state.markers = [];
-                                state.pins = [];
-                                document.getElementById('roundTripToggle').checked = false;
-                                state.isRoundTrip = false;
-                                document.getElementById('steepUphillToggle').checked = false;
-                                state.showSteepHighlight = false;
-                                
-                                state.history = [];
-                                state.historyIndex = -1;
-                                saveState();
-                            }
-                            
+                                function clearRoute(clearPins) {
+                                    if (clearPins) {
+                                        state.markers.forEach(marker => marker.remove());
+                                        state.markers = [];
+                                        state.pins = [];
+                                        document.getElementById('roundTripToggle').checked = false;
+                                        state.isRoundTrip = false;
+                                        document.getElementById('steepUphillToggle').checked = false;
+                                        state.showSteepHighlight = false;
+                                        
+                                        state.history = [];
+                                        state.historyIndex = -1;
+                                        
+                                        state.routeName = '--';
+                                        state.isRouteNameManuallySet = false;
+                                        document.getElementById('routeNameDisplay').textContent = '--';
+                        
+                                        saveState();
+                                    }                            
                             // Clear the route data from the map sources
                             if (state.map.isStyleLoaded()) {
                                 const routeSource = state.map.getSource('routeSource');
