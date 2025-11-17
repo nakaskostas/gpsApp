@@ -1114,7 +1114,7 @@
             highlightedSuggestionIndex: -1,
             isSearchLoading: false,
             // Address Panel state
-            pinAddresses: [], // Will be an array of {status, address, lngLat} objects
+            pinAddresses: [], // Will be an array of {status, address, lngLat, feature} objects
             isAddressPanelVisible: false,
             isAddressPanelMoved: false,
             lastTogglePosition: { top: '210px', left: '1rem' },
@@ -1124,37 +1124,97 @@
         };
 
         // --- ROUTE NAME LOGIC ---
-        function shortenAddress(fullAddress) {
-            if (!fullAddress || typeof fullAddress !== 'string') return '';
-            return fullAddress.split(',')[0].trim();
+
+        function parseAddressComponents(feature) {
+            if (!feature) return { street: null, city: null, country: null };
+
+            // The 'text' property is usually the most specific part (street, POI name).
+            const street = feature.text || null;
+            let city = null;
+            let country = null;
+
+            // The 'context' array contains broader entities like city, region, country.
+            if (feature.context) {
+                for (const item of feature.context) {
+                    const id = item.id || '';
+                    // 'place' is typically a city/town, 'locality' can be a neighborhood or city.
+                    // We prioritize 'place'.
+                    if (id.startsWith('place')) {
+                        city = item.text;
+                    } else if (id.startsWith('locality') && !city) {
+                        city = item.text;
+                    }
+                    
+                    if (id.startsWith('country')) {
+                        country = item.text;
+                    }
+                }
+            }
+            return { street, city, country };
         }
+
 
         function updateDefaultRouteName() {
             if (state.isRouteNameManuallySet) return;
 
-            const successfulPins = state.pinAddresses.filter(p => p.status === 'success');
-            if (successfulPins.length === 0) {
+            const firstPin = state.pinAddresses[0];
+            const lastPin = state.pinAddresses[state.pinAddresses.length - 1];
+
+            // Exit if we don't have the necessary data
+            if (!firstPin || firstPin.status !== 'success') {
                 state.routeName = '--';
                 document.getElementById('routeNameDisplay').textContent = state.routeName;
                 return;
             }
 
-            const firstPin = state.pinAddresses[0];
-            const lastPin = state.pinAddresses[state.pinAddresses.length - 1];
+            const start = parseAddressComponents(firstPin.feature);
+            let newName = start.street || start.city || '--';
 
-            let newName = '--';
+            // Handle Round Trip
+            if (state.isRoundTrip && state.pins.length > 1) {
+                const cityPart = start.city ? `${start.city}, ` : '';
+                const streetPart = start.street || '';
+                newName = `${cityPart}${streetPart} (Κυκλική)`;
+            } 
+            // Handle one-way trips (more than 1 pin)
+            else if (state.pins.length > 1) {
+                if (!lastPin || lastPin.status !== 'success') {
+                    // If last pin isn't resolved, just use the start
+                    newName = start.street || start.city || '--';
+                } else {
+                    const end = parseAddressComponents(lastPin.feature);
 
-            if (state.isRoundTrip && firstPin && firstPin.status === 'success') {
-                newName = `${shortenAddress(firstPin.address)} (Κυκλική)`;
-            } else {
-                if (state.pinAddresses.length === 1 && firstPin && firstPin.status === 'success') {
-                    newName = shortenAddress(firstPin.address);
-                } else if (state.pinAddresses.length > 1 && firstPin && firstPin.status === 'success' && lastPin && lastPin.status === 'success') {
-                    newName = `${shortenAddress(firstPin.address)} - ${shortenAddress(lastPin.address)}`;
+                    const startCity = start.city || '';
+                    const endCity = end.city || '';
+                    const startCountry = start.country || '';
+                    const endCountry = end.country || '';
+
+                    // Different Countries
+                    if (startCountry && endCountry && startCountry !== endCountry) {
+                        const startStreetPart = start.street ? `, ${start.street}` : '';
+                        const endStreetPart = end.street ? `, ${end.street}` : '';
+                        newName = `${startCountry}, ${startCity}${startStreetPart} - ${endCountry}, ${endCity}${endStreetPart}`;
+                    }
+                    // Different Cities, Same Country
+                    else if (startCity && endCity && startCity !== endCity) {
+                        const startStreetPart = start.street ? `, ${start.street}` : '';
+                        const endStreetPart = end.street ? `, ${end.street}` : '';
+                        newName = `${startCity}${startStreetPart} - ${endCity}${endStreetPart}`;
+                    }
+                    // Same City
+                    else if (startCity && startCity === endCity) {
+                        const startStreet = start.street || 'Εκκίνηση';
+                        const endStreet = end.street || 'Τερματισμός';
+                        newName = `${startCity}: ${startStreet} - ${endStreet}`;
+                    }
+                    // Fallback if city/country info is missing
+                    else {
+                        newName = `${start.street || startCity} - ${end.street || endCity}`;
+                    }
                 }
             }
             
-            state.routeName = newName;
+            state.routeName = newName.trim();
             document.getElementById('routeNameDisplay').textContent = state.routeName;
         }
 
@@ -1316,7 +1376,7 @@
             }
             const data = await response.json();
             if (data.features && data.features.length > 0) {
-                return data.features[0].place_name;
+                return data.features[0]; // Return the whole feature
             } else {
                 throw new Error('No address found for these coordinates.');
             }
@@ -1342,20 +1402,23 @@
             renderAddressList();
 
             try {
-                const address = await getAddressFromCoordinates(item.lngLat);
-                if (typeof address === 'string' || address instanceof String) {
-                    item.address = address;
+                const feature = await getAddressFromCoordinates(item.lngLat);
+                if (feature && feature.place_name) {
+                    item.address = feature.place_name; // For display in the list
+                    item.feature = feature; // Store the whole feature for details
                     item.status = 'success';
                 } else {
-                    throw new Error("Invalid address format received.");
+                    throw new Error("Invalid address feature received.");
                 }
             } catch (error) {
                 console.error(`Failed to fetch address for pin ${index}:`, error);
-                item.address = error.message; // Store error message
+                item.address = 'Αποτυχία λήψης'; // User-friendly error message
+                item.feature = null;
                 item.status = 'error';
             }
             
-            if (item.status === 'success' && (index === 0 || index === state.pinAddresses.length - 1)) {
+            // Always try to update the route name after a fetch, especially for the first and last pins.
+            if (index === 0 || index === state.pinAddresses.length - 1) {
                 updateDefaultRouteName();
             }
             renderAddressList();
@@ -2165,7 +2228,7 @@
         function restoreState(snapshot) {
             // MapTiler uses LngLat object, which is compatible with {lng, lat}
             state.pins = snapshot.pins.map(p => new maptilersdk.LngLat(p.lng, p.lat));
-            state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
+            state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p, feature: null }));
             state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
 
             state.isRoundTrip = snapshot.isRoundTrip;
@@ -2387,7 +2450,7 @@
 
                     clearRoute(true); // Clear everything before loading
                     state.pins = newPins;
-                    state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
+                    state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p, feature: null }));
                     state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
 
                     const routeNameTag = xmlDoc.querySelector('metadata > name');
@@ -2427,7 +2490,7 @@
             
             const latlng = e.lngLat;
             state.pins.push(latlng);
-            state.pinAddresses.push({ status: 'empty', address: null, lngLat: latlng });
+            state.pinAddresses.push({ status: 'empty', address: null, lngLat: latlng, feature: null });
             fetchAddressForPin(state.pins.length - 1);
 
             addMarker(latlng, state.pins.length);
@@ -2536,7 +2599,7 @@
             }
 
             state.pins.splice(index, 0, latlng);
-            state.pinAddresses.splice(index, 0, { status: 'empty', address: null, lngLat: latlng });
+            state.pinAddresses.splice(index, 0, { status: 'empty', address: null, lngLat: latlng, feature: null });
             fetchAddressForPin(index);
             
             redrawFromState(); // Easiest way to re-number and re-draw everything
@@ -2555,7 +2618,7 @@
             
             marker.getElement().addEventListener('contextmenu', (e) => handleMarkerRightClick(e, index));
 
-            marker.on('dragend', () => {
+            marker.on('dragend', async () => {
                 const markerIndex = state.markers.indexOf(marker);
                 if (markerIndex > -1) {
                     const newLngLat = marker.getLngLat();
@@ -2564,10 +2627,12 @@
                     // Update address state and refetch
                     if(state.pinAddresses[markerIndex]) {
                         state.pinAddresses[markerIndex].lngLat = newLngLat;
-                        fetchAddressForPin(markerIndex, true); // Force refetch for new location
+                        await fetchAddressForPin(markerIndex, true); // Force refetch for new location
                     }
 
-                    if (state.pins.length >= 2) calculateRoute();
+                    if (state.pins.length >= 2) {
+                        calculateRoute();
+                    }
                     saveState();
                 }
             });
@@ -3058,6 +3123,7 @@
                             state.currentElevation = { data: sampledElevationData, coordinates: sampledRouteCoords };
                 
                             updateRouteStats({ distance: cumulativeDistance, elevationGain, steepUphillDistance });
+                            updateDefaultRouteName(); // Safeguard call
                             displayColoredRoute(routeCoordinates);
                             displayElevationChart(sampledElevationData);
                             updateStatsVisibility(true);
