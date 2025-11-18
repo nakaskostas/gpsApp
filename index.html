@@ -1285,18 +1285,30 @@
             const startEditing = () => {
                 if (state.pins.length === 0) return;
 
-                // Before editing, capture what the default name *would be*
-                // if the user hasn't modified it, or if they want to revert.
+                // Store the current name, whether it's default or custom.
+                const currentName = state.routeName;
+
+                // Temporarily disable the user-modified flag to force generation of the default name.
                 const tempIsUserModified = state.isRouteNameUserModified;
-                state.isRouteNameUserModified = false; // Temporarily disable user modification flag
-                generateDefaultRouteName(); // Force generation of the current default name
-                lastGeneratedDefaultName = state.routeName; // Store it
-                state.isRouteNameUserModified = tempIsUserModified; // Restore original flag
+                state.isRouteNameUserModified = false; 
+                
+                // Generate and capture the most up-to-date default name for potential reverts.
+                generateDefaultRouteName(); 
+                lastGeneratedDefaultName = state.routeName; 
+                
+                // Restore the user-modified flag.
+                state.isRouteNameUserModified = tempIsUserModified; 
+
+                // If the name was user-modified, restore the user's custom name to the state.
+                // Otherwise, state.routeName already holds the latest default name.
+                if (state.isRouteNameUserModified) {
+                    state.routeName = currentName;
+                }
 
                 display.classList.add('hidden');
                 editButton.classList.add('hidden');
                 input.classList.remove('hidden');
-                input.value = state.routeName; // Display current name (could be user-modified or default)
+                input.value = state.routeName; // This will now be the user's custom name if it existed.
                 input.focus();
                 input.select();
             };
