@@ -552,21 +552,22 @@
             <div id="stats-content" class="grid grid-cols-4 gap-3">
                 <!-- Route Name -->
                 <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
-                    <div class="text-gray-600 text-xs uppercase tracking-wider font-semibold">Όνομα Διαδρομής</div>
-                    <div id="routeNameContainer" class="relative group mt-1">
-                        <span id="routeNameDisplay" class="font-bold text-xl text-gray-800 cursor-pointer block truncate px-8">--</span>
-                        <input type="text" id="routeNameInput" maxlength="60" class="font-bold text-xl text-gray-800 w-full text-center bg-transparent border-b-2 border-blue-500 focus:outline-none hidden" />
-                        <div id="routeNameEditIconContainer" class="absolute top-0 right-0 h-full flex items-center pr-2">
-                            <svg class="w-5 h-5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"></path></svg>
-                        </div>
+                    <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Όνομα Διαδρομής</div>
+                    <div id="routeNameContainer" class="flex items-center justify-center gap-2 mt-1">
+                        <span id="routeName" class="font-bold text-xl text-gray-800 cursor-pointer" title="Κάντε κλικ για επεξεργασία">--</span>
+                        <button id="editRouteNameBtn" class="p-1 rounded-full hover:bg-gray-200 transition-colors">
+                            <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L16.732 3.732z"></path></svg>
+                        </button>
                     </div>
+                    <input type="text" id="routeNameInput" class="hidden w-full text-center font-bold text-xl bg-gray-100 border-b-2 border-blue-500 focus:outline-none">
                 </div>
+                
                 <!-- Total Distance -->
                 <div class="col-span-4 text-center p-3 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold">Συνολική Απόσταση</div>
                     <div id="totalDistance" class="font-bold text-3xl text-blue-600 mt-1">--</div>
                 </div>
-                
+
                 <!-- Steep Uphill -->
                 <div class="col-span-4 text-center p-2 rounded-lg shadow-md">
                     <div class="text-gray-700 text-xs uppercase tracking-wider font-semibold leading-tight">Μήκος Απότομης Ανάβασης (&gt;5%)</div>
@@ -680,7 +681,7 @@
             const totalDistance = document.getElementById('totalDistance').textContent;
             const steepUphillDistance = document.getElementById('steepUphillDistance').textContent;
             const elevationGain = document.getElementById('elevationGain').textContent;
-            const routeName = state.routeName && state.routeName !== '--' ? ` "${state.routeName}"` : '';
+            const routeName = (state.routeName && state.routeName !== '--') ? ` "${state.routeName}"` : '';
 
             return `
                 <h1 style="font-size: 24px; font-weight: bold; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; text-align: center;">Αναφορά Διαδρομής${routeName}</h1>
@@ -1114,157 +1115,234 @@
             highlightedSuggestionIndex: -1,
             isSearchLoading: false,
             // Address Panel state
-            pinAddresses: [], // Will be an array of {status, address, lngLat, feature} objects
+            pinAddresses: [], // Will be an array of {status, address, lngLat} objects
             isAddressPanelVisible: false,
             isAddressPanelMoved: false,
-            lastTogglePosition: { top: '210px', left: '1rem' },
-            // Route Name state
+            // Route Naming state
             routeName: '',
-            isRouteNameManuallySet: false,
+            isRouteNameUserModified: false,
         };
 
-        // --- ROUTE NAME LOGIC ---
+        // --- ADDRESS PANEL LOGIC ---
 
-        function parseAddressComponents(feature) {
-            if (!feature) return { street: null, city: null, country: null };
+        // --- ROUTE NAMING LOGIC ---
 
-            // The 'text' property is usually the most specific part (street, POI name).
-            const street = feature.text || null;
-            let city = null;
-            let country = null;
-
-            // The 'context' array contains broader entities like city, region, country.
-            if (feature.context) {
-                for (const item of feature.context) {
-                    const id = item.id || '';
-                    // 'place' is typically a city/town, 'locality' can be a neighborhood or city.
-                    // We prioritize 'place'.
-                    if (id.startsWith('place')) {
-                        city = item.text;
-                    } else if (id.startsWith('locality') && !city) {
-                        city = item.text;
+        /**
+         * Parses a raw address string from the geocoding API into structured components.
+         * This is a heuristic-based parser.
+         * @param {string} addressString The full address string.
+         * @returns {object} An object with { street, city, country }.
+         */
+                function parseAddress(addressString) {
+                    if (!addressString || typeof addressString !== 'string') {
+                        return { street: null, city: null, country: null };
+                    }
+        
+                    const parts = addressString.split(',').map(p => p.trim());
+                    if (parts.length === 0) {
+                        return { street: null, city: null, country: null };
+                    }
+        
+                    // The most specific place name is almost always the first part.
+                    let street = parts[0] || null;
+        
+                    // The country is always the last part.
+                    const country = parts[parts.length - 1] || null;
+        
+                    // The city is usually the second-to-last part.
+                    let city = (parts.length > 1) ? parts[parts.length - 2] : null;
+        
+                    // Clean up city (remove postal codes)
+                    if (city) {
+                        city = city.replace(/\d/g, '').trim();
                     }
                     
-                    if (id.startsWith('country')) {
-                        country = item.text;
+                    // If we only have two parts, e.g., "Ioannina, Greece", then:
+                    // street = "Ioannina", country = "Greece", city = "Ioannina". This is correct.
+                    if (parts.length === 2) {
+                        city = street;
                     }
+        
+                    // Remove trailing numbers from the street name
+                    if (street) {
+                        street = street.replace(/\s+\d+$/, '').trim();
+                    }
+        
+                    return { street, city, country };
                 }
-            }
-            return { street, city, country };
-        }
 
-
-        function updateDefaultRouteName() {
-            if (state.isRouteNameManuallySet) return;
-
-            const firstPin = state.pinAddresses[0];
-            const lastPin = state.pinAddresses[state.pinAddresses.length - 1];
-
-            // Exit if we don't have the necessary data
-            if (!firstPin || firstPin.status !== 'success') {
-                state.routeName = '--';
-                document.getElementById('routeNameDisplay').textContent = state.routeName;
+        /**
+         * Generates and sets the default route name based on the first and last pins.
+         */
+        function generateDefaultRouteName() {
+            if (state.isRouteNameUserModified || state.pinAddresses.length < 1) {
+                if(state.pinAddresses.length < 1) {
+                    state.routeName = '--';
+                    updateRouteNameUI();
+                }
                 return;
             }
 
-            const start = parseAddressComponents(firstPin.feature);
-            let newName = start.street || start.city || '--';
+            const startPin = state.pinAddresses[0];
+            const endPin = state.pinAddresses[state.pinAddresses.length - 1];
 
-            // Handle Round Trip
-            if (state.isRoundTrip && state.pins.length > 1) {
-                const cityPart = start.city ? `${start.city}, ` : '';
-                const streetPart = start.street || '';
-                newName = `${cityPart}${streetPart} (Κυκλική)`;
-            } 
-            // Handle one-way trips (more than 1 pin)
-            else if (state.pins.length > 1) {
-                if (!lastPin || lastPin.status !== 'success') {
-                    // If last pin isn't resolved, just use the start
-                    newName = start.street || start.city || '--';
-                } else {
-                    const end = parseAddressComponents(lastPin.feature);
+            if (!startPin) {
+                state.routeName = '--';
+                updateRouteNameUI();
+                return;
+            }
 
-                    const startCity = start.city || '';
-                    const endCity = end.city || '';
-                    const startCountry = start.country || '';
-                    const endCountry = end.country || '';
-
-                    // Different Countries
-                    if (startCountry && endCountry && startCountry !== endCountry) {
-                        const startStreetPart = start.street ? `, ${start.street}` : '';
-                        const endStreetPart = end.street ? `, ${end.street}` : '';
-                        newName = `${startCountry}, ${startCity}${startStreetPart} - ${endCountry}, ${endCity}${endStreetPart}`;
-                    }
-                    // Different Cities, Same Country
-                    else if (startCity && endCity && startCity !== endCity) {
-                        const startStreetPart = start.street ? `, ${start.street}` : '';
-                        const endStreetPart = end.street ? `, ${end.street}` : '';
-                        newName = `${startCity}${startStreetPart} - ${endCity}${endStreetPart}`;
-                    }
-                    // Same City
-                    else if (startCity && startCity === endCity) {
-                        const startStreet = start.street || 'Εκκίνηση';
-                        const endStreet = end.street || 'Τερματισμός';
-                        newName = `${startCity}: ${startStreet} - ${endStreet}`;
-                    }
-                    // Fallback if city/country info is missing
-                    else {
-                        newName = `${start.street || startCity} - ${end.street || endCity}`;
-                    }
-                }
+            // Handle loading state
+            if (startPin.status === 'loading' || (state.pinAddresses.length > 1 && endPin.status === 'loading')) {
+                state.routeName = 'Δημιουργία ονόματος...';
+                updateRouteNameUI();
+                return;
             }
             
-            state.routeName = newName.trim();
-            document.getElementById('routeNameDisplay').textContent = state.routeName;
+            // Handle single pin case
+            if (state.pinAddresses.length === 1) {
+                 if (startPin.status === 'success') {
+                    state.routeName = startPin.address;
+                } else {
+                    state.routeName = 'Αναμένεται σημείο...'
+                }
+                updateRouteNameUI();
+                return;
+            }
+
+            // Handle round trip
+            if (state.isRoundTrip) {
+                if (startPin.status === 'success') {
+                    const startAddr = parseAddress(startPin.address);
+                    state.routeName = `${startAddr.city || startAddr.street}, ${startAddr.street} (Κυκλική)`;
+                } else {
+                    state.routeName = 'Κυκλική Διαδρομή';
+                }
+                updateRouteNameUI();
+                return;
+            }
+
+            // Handle normal two-or-more-pin route
+            if (startPin.status === 'success' && endPin.status === 'success') {
+                const startAddr = parseAddress(startPin.address);
+                const endAddr = parseAddress(endPin.address);
+
+                // Helper to format a location part, avoiding duplicates for villages/POIs
+                const formatPart = (addr) => {
+                    if (!addr.city) return addr.street || '';
+                    if (!addr.street) return addr.city || '';
+                    // If street and city are the same (common for villages), just use one.
+                    if (addr.street === addr.city) {
+                        return addr.city;
+                    }
+                    // Otherwise, combine them.
+                    return `${addr.city}, ${addr.street}`;
+                };
+
+                const startPart = formatPart(startAddr);
+                const endPart = formatPart(endAddr);
+
+                if (startAddr.country !== endAddr.country) {
+                    state.routeName = `${startAddr.country}, ${startPart} → ${endAddr.country}, ${endPart}`;
+                } else if (startAddr.city !== endAddr.city) {
+                    state.routeName = `${startPart} → ${endPart}`;
+                } else { // Same city
+                    if (startAddr.street === endAddr.street) {
+                         state.routeName = `${startAddr.city}: ${startAddr.street}`;
+                    } else {
+                         state.routeName = `${startAddr.city}: ${startAddr.street} → ${endAddr.street}`;
+                    }
+                }
+            } else {
+                state.routeName = 'Επεξεργασία διαδρομής...';
+            }
+            
+            updateRouteNameUI();
         }
 
-        function setupRouteNameEditor() {
+        /**
+         * Updates the route name display in the UI.
+         */
+        function updateRouteNameUI() {
+            const routeNameSpan = document.getElementById('routeName');
+            if (routeNameSpan) {
+                routeNameSpan.textContent = state.routeName || '--';
+                routeNameSpan.title = state.routeName || 'Κάντε κλικ για επεξεργασία';
+            }
+        }
+
+        /**
+         * Initializes event listeners for the route name editing functionality.
+         */
+        function setupRouteNameEditing() {
             const container = document.getElementById('routeNameContainer');
-            const display = document.getElementById('routeNameDisplay');
+            const display = document.getElementById('routeName');
+            const editButton = document.getElementById('editRouteNameBtn');
             const input = document.getElementById('routeNameInput');
-            const editIcon = document.getElementById('routeNameEditIconContainer');
+
+            let lastGeneratedDefaultName = ''; // To store the default name before editing
 
             const startEditing = () => {
+                if (state.pins.length === 0) return;
+
+                // Before editing, capture what the default name *would be*
+                // if the user hasn't modified it, or if they want to revert.
+                const tempIsUserModified = state.isRouteNameUserModified;
+                state.isRouteNameUserModified = false; // Temporarily disable user modification flag
+                generateDefaultRouteName(); // Force generation of the current default name
+                lastGeneratedDefaultName = state.routeName; // Store it
+                state.isRouteNameUserModified = tempIsUserModified; // Restore original flag
+
                 display.classList.add('hidden');
-                editIcon.classList.add('hidden');
+                editButton.classList.add('hidden');
                 input.classList.remove('hidden');
-                input.value = state.routeName === '--' ? '' : state.routeName;
+                input.value = state.routeName; // Display current name (could be user-modified or default)
                 input.focus();
                 input.select();
             };
 
-            const stopEditing = (saveChanges) => {
-                if (saveChanges) {
-                    const newValue = input.value.trim();
-                    if (newValue) {
-                        state.routeName = newValue;
-                        state.isRouteNameManuallySet = true;
-                    } else {
-                        // If user clears the input, revert to default logic
-                        state.isRouteNameManuallySet = false;
-                        updateDefaultRouteName(); // Recalculate default
+            const stopEditing = () => {
+                const newName = input.value.trim();
+                
+                // If the new name is empty, revert to the last generated default name
+                if (!newName) {
+                    state.routeName = lastGeneratedDefaultName;
+                    state.isRouteNameUserModified = false;
+                } else if (newName === lastGeneratedDefaultName) {
+                    // If the user typed back the default name, treat it as not user-modified
+                    state.routeName = newName;
+                    state.isRouteNameUserModified = false;
+                } else {
+                    // User provided a truly custom name
+                    let finalName = newName;
+                    if (newName.length > 60) {
+                        finalName = newName.substring(0, 60);
+                        showMessage('Το όνομα διαδρομής περικόπηκε στους 60 χαρακτήρες.', 'warning');
                     }
+                    state.routeName = finalName;
+                    state.isRouteNameUserModified = true;
                 }
-                display.textContent = state.routeName;
-                input.classList.add('hidden');
+                
+                updateRouteNameUI();
                 display.classList.remove('hidden');
-                editIcon.classList.remove('hidden');
+                editButton.classList.remove('hidden');
+                input.classList.add('hidden');
+                saveState();
             };
 
             display.addEventListener('click', startEditing);
-            editIcon.addEventListener('click', startEditing);
-
-            input.addEventListener('blur', () => stopEditing(true));
+            editButton.addEventListener('click', startEditing);
+            
+            input.addEventListener('blur', stopEditing);
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
-                    stopEditing(true);
+                    input.blur(); // This will trigger the stopEditing logic
                 } else if (e.key === 'Escape') {
-                    stopEditing(false);
+                    input.value = state.routeName; // Revert changes
+                    input.blur();
                 }
             });
         }
-
-        // --- ADDRESS PANEL LOGIC ---
 
         /**
          * Renders the list of addresses in the address panel based on the current state.
@@ -1376,7 +1454,7 @@
             }
             const data = await response.json();
             if (data.features && data.features.length > 0) {
-                return data.features[0]; // Return the whole feature
+                return data.features[0].place_name;
             } else {
                 throw new Error('No address found for these coordinates.');
             }
@@ -1402,25 +1480,20 @@
             renderAddressList();
 
             try {
-                const feature = await getAddressFromCoordinates(item.lngLat);
-                if (feature && feature.place_name) {
-                    item.address = feature.place_name; // For display in the list
-                    item.feature = feature; // Store the whole feature for details
+                const address = await getAddressFromCoordinates(item.lngLat);
+                if (typeof address === 'string' || address instanceof String) {
+                    item.address = address;
                     item.status = 'success';
+                    generateDefaultRouteName(); // Update route name when an address is fetched
                 } else {
-                    throw new Error("Invalid address feature received.");
+                    throw new Error("Invalid address format received.");
                 }
             } catch (error) {
                 console.error(`Failed to fetch address for pin ${index}:`, error);
-                item.address = 'Αποτυχία λήψης'; // User-friendly error message
-                item.feature = null;
+                item.address = error.message; // Store error message
                 item.status = 'error';
             }
             
-            // Always try to update the route name after a fetch, especially for the first and last pins.
-            if (index === 0 || index === state.pinAddresses.length - 1) {
-                updateDefaultRouteName();
-            }
             renderAddressList();
         }
 
@@ -1657,8 +1730,8 @@
             initMap();
             initUIElements();
             setupEventListeners();
+            setupRouteNameEditing();
             initializeDraggableElements();
-            setupRouteNameEditor();
             
             if (!parseUrlAndRestore()) {
                 // saveState(); // TODO: Re-enable after refactoring saveState
@@ -2203,9 +2276,7 @@
             const snapshot = {
                 pins: state.pins.map(p => ({ lat: p.lat, lng: p.lng })),
                 isRoundTrip: state.isRoundTrip,
-                showSteepHighlight: state.showSteepHighlight,
-                routeName: state.routeName,
-                isRouteNameManuallySet: state.isRouteNameManuallySet,
+                showSteepHighlight: state.showSteepHighlight
             };
             state.history.push(snapshot);
             state.historyIndex++;
@@ -2228,17 +2299,14 @@
         function restoreState(snapshot) {
             // MapTiler uses LngLat object, which is compatible with {lng, lat}
             state.pins = snapshot.pins.map(p => new maptilersdk.LngLat(p.lng, p.lat));
-            state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p, feature: null }));
+            state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
             state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
 
             state.isRoundTrip = snapshot.isRoundTrip;
             state.showSteepHighlight = snapshot.showSteepHighlight ?? false;
-            state.routeName = snapshot.routeName || '';
-            state.isRouteNameManuallySet = snapshot.isRouteNameManuallySet || false;
             
             document.getElementById('roundTripToggle').checked = state.isRoundTrip;
             document.getElementById('steepUphillToggle').checked = state.showSteepHighlight;
-            document.getElementById('routeNameDisplay').textContent = state.routeName || '--';
             
             redrawFromState();
             updateUndoButton();
@@ -2269,8 +2337,8 @@
             } else {
                 clearRoute(false); // This will also need refactoring
             }
-            updateDefaultRouteName();
             updateUIState();
+            generateDefaultRouteName();
         }
         
         // --- SHARE & URL FUNCTIONALITY ---
@@ -2278,8 +2346,7 @@
             if (state.pins.length === 0) return null;
 
             const pinString = state.pins.map(p => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
-            const namePart = state.isRouteNameManuallySet ? `|${state.routeName}` : '|';
-            const dataString = `v2|${pinString}|${state.isRoundTrip}|${state.showSteepHighlight}|${state.isRouteNameManuallySet}${namePart}`;
+            const dataString = `v1|${pinString}|${state.isRoundTrip}|${state.showSteepHighlight}`;
             const compressed = LZString.compressToEncodedURIComponent(dataString);
 
             const baseUrl = window.location.href.split('#')[0];
@@ -2307,40 +2374,33 @@
 
             try {
                 const decompressed = LZString.decompressFromEncodedURIComponent(hash);
-                if (!decompressed) return false;
-
-                const parts = decompressed.split('|');
-                const version = parts.shift();
-
-                let snapshot;
-
-                if (version === 'v1') {
-                    const showSteepHighlight = parts.pop() === 'true';
-                    const isRoundTrip = parts.pop() === 'true';
-                    const pins = parts.map(p => {
-                        const coords = p.split(',');
-                        return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
-                    });
-                    snapshot = { pins, isRoundTrip, showSteepHighlight, isRouteNameManuallySet: false, routeName: '' };
-                } else if (version === 'v2') {
-                    const routeName = parts.pop();
-                    const isRouteNameManuallySet = parts.pop() === 'true';
-                    const showSteepHighlight = parts.pop() === 'true';
-                    const isRoundTrip = parts.pop() === 'true';
-                    const pins = parts.map(p => {
-                        const coords = p.split(',');
-                        return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
-                    });
-                    snapshot = { pins, isRoundTrip, showSteepHighlight, isRouteNameManuallySet, routeName };
-                } else {
+                if (!decompressed || !decompressed.startsWith('v1|')) {
                     console.warn('Invalid or old share link format.');
                     return false;
                 }
 
-                if (snapshot.pins.length > 0) {
+                const parts = decompressed.split('|');
+                parts.shift(); // remove "v1"
+
+                const showSteepHighlight = parts.pop() === 'true';
+                const isRoundTrip = parts.pop() === 'true';
+
+                const pins = parts.map(p => {
+                    const coords = p.split(',');
+                    // Return an object compatible with maptilersdk.LngLat
+                    return { lat: parseFloat(coords[0]), lng: parseFloat(coords[1]) };
+                });
+
+                if (pins.length > 0) {
+                    const snapshot = { 
+                        pins: pins, 
+                        isRoundTrip,
+                        showSteepHighlight
+                    };
                     state.history = [snapshot];
                     state.historyIndex = 0;
                     
+                    // Wait for map to be loaded before restoring state
                     if (state.map.isStyleLoaded()) {
                         restoreState(snapshot);
                     } else {
@@ -2367,7 +2427,7 @@
             let gpx = `<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd" version="1.1" creator="WebApp Route Planner">
  <metadata>
-  <name>${state.routeName || 'Διαδρομή από WebApp'}</name>
+  <name>Διαδρομή από WebApp</name>
   <time>${new Date().toISOString()}</time>
  </metadata>
 `;
@@ -2382,7 +2442,7 @@
 
             // Add track if a route is calculated
             if (state.currentRoute && state.currentRoute.coordinates.length > 0) {
-                gpx += ` <trk>\n  <name>${state.routeName || 'Υπολογισμένη Διαδρομή'}</name>\n  <trkseg>\n`;
+                gpx += ' <trk>\n  <name>Υπολογισμένη Διαδρομή</name>\n  <trkseg>\n';
                 state.currentRoute.coordinates.forEach(coord => {
                     gpx += `   <trkpt lat="${coord[0]}" lon="${coord[1]}"><ele>${coord[2] || 0}</ele></trkpt>\n`;
                 });
@@ -2450,15 +2510,8 @@
 
                     clearRoute(true); // Clear everything before loading
                     state.pins = newPins;
-                    state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p, feature: null }));
+                    state.pinAddresses = state.pins.map(p => ({ status: 'empty', address: null, lngLat: p }));
                     state.pinAddresses.forEach((_, index) => fetchAddressForPin(index));
-
-                    const routeNameTag = xmlDoc.querySelector('metadata > name');
-                    if (routeNameTag && routeNameTag.textContent) {
-                        state.routeName = routeNameTag.textContent;
-                        state.isRouteNameManuallySet = true;
-                        document.getElementById('routeNameDisplay').textContent = state.routeName;
-                    }
 
                     redrawFromState();
                     saveState();
@@ -2490,7 +2543,7 @@
             
             const latlng = e.lngLat;
             state.pins.push(latlng);
-            state.pinAddresses.push({ status: 'empty', address: null, lngLat: latlng, feature: null });
+            state.pinAddresses.push({ status: 'empty', address: null, lngLat: latlng });
             fetchAddressForPin(state.pins.length - 1);
 
             addMarker(latlng, state.pins.length);
@@ -2599,7 +2652,7 @@
             }
 
             state.pins.splice(index, 0, latlng);
-            state.pinAddresses.splice(index, 0, { status: 'empty', address: null, lngLat: latlng, feature: null });
+            state.pinAddresses.splice(index, 0, { status: 'empty', address: null, lngLat: latlng });
             fetchAddressForPin(index);
             
             redrawFromState(); // Easiest way to re-number and re-draw everything
@@ -2618,7 +2671,7 @@
             
             marker.getElement().addEventListener('contextmenu', (e) => handleMarkerRightClick(e, index));
 
-            marker.on('dragend', async () => {
+            marker.on('dragend', () => {
                 const markerIndex = state.markers.indexOf(marker);
                 if (markerIndex > -1) {
                     const newLngLat = marker.getLngLat();
@@ -2627,12 +2680,10 @@
                     // Update address state and refetch
                     if(state.pinAddresses[markerIndex]) {
                         state.pinAddresses[markerIndex].lngLat = newLngLat;
-                        await fetchAddressForPin(markerIndex, true); // Force refetch for new location
+                        fetchAddressForPin(markerIndex, true); // Force refetch for new location
                     }
 
-                    if (state.pins.length >= 2) {
-                        calculateRoute();
-                    }
+                    if (state.pins.length >= 2) calculateRoute();
                     saveState();
                 }
             });
@@ -2689,7 +2740,6 @@
         function handleRoundTripToggle(e) {
             state.isRoundTrip = e.target.checked;
             updateFirstMarkerIcon();
-            updateDefaultRouteName();
             if (state.pins.length >= 2) {
                 calculateRoute();
             } else if (!state.isRoundTrip) {
@@ -3123,7 +3173,6 @@
                             state.currentElevation = { data: sampledElevationData, coordinates: sampledRouteCoords };
                 
                             updateRouteStats({ distance: cumulativeDistance, elevationGain, steepUphillDistance });
-                            updateDefaultRouteName(); // Safeguard call
                             displayColoredRoute(routeCoordinates);
                             displayElevationChart(sampledElevationData);
                             updateStatsVisibility(true);
@@ -3373,25 +3422,26 @@
                         }
                         
                         // --- UTILITY & HELPER FUNCTIONS ---
-                                function clearRoute(clearPins) {
-                                    if (clearPins) {
-                                        state.markers.forEach(marker => marker.remove());
-                                        state.markers = [];
-                                        state.pins = [];
-                                        document.getElementById('roundTripToggle').checked = false;
-                                        state.isRoundTrip = false;
-                                        document.getElementById('steepUphillToggle').checked = false;
-                                        state.showSteepHighlight = false;
-                                        
-                                        state.history = [];
-                                        state.historyIndex = -1;
-                                        
-                                        state.routeName = '--';
-                                        state.isRouteNameManuallySet = false;
-                                        document.getElementById('routeNameDisplay').textContent = '--';
-                        
-                                        saveState();
-                                    }                            
+                        function clearRoute(clearPins) {
+                            if (clearPins) {
+                                state.markers.forEach(marker => marker.remove());
+                                state.markers = [];
+                                state.pins = [];
+                                document.getElementById('roundTripToggle').checked = false;
+                                state.isRoundTrip = false;
+                                document.getElementById('steepUphillToggle').checked = false;
+                                state.showSteepHighlight = false;
+                                
+                                // Reset route name state
+                                state.routeName = '';
+                                state.isRouteNameUserModified = false;
+                                generateDefaultRouteName();
+
+                                state.history = [];
+                                state.historyIndex = -1;
+                                saveState();
+                            }
+                            
                             // Clear the route data from the map sources
                             if (state.map.isStyleLoaded()) {
                                 const routeSource = state.map.getSource('routeSource');
